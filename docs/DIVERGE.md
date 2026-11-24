@@ -65,4 +65,30 @@ The instruction checker itself is tested by corrupting a recorded result and con
 
 ## Related: first-divergence summary between two engines
 
-`ounce-core trace-diff` compares two bounded `ounce.trace.v1` step traces (recorded with `OUNCE_TRACE_SUMMARY=<file>`) and reports the first differing step. It needs no AArch64 host and does not replay on hardware. See [OUNCE_TRACE_V1_SCHEMA.md](OUNCE_TRACE_V1_SCHEMA.md).
+`ounce-core trace-diff <expected.json> <actual.json> [--window N] [--elf program.elf] [--json out.json]` compares two bounded `ounce.trace.v1` step traces (recorded with `OUNCE_TRACE_SUMMARY=<file>` on `run`/`run-nro`) and reports the first differing step. It needs no AArch64 host and does not replay on hardware. See [OUNCE_TRACE_V1_SCHEMA.md](OUNCE_TRACE_V1_SCHEMA.md).
+
+After the one-line headline, `trace-diff` prints a short readout:
+
+- `step`: the instruction index of the first divergence.
+- `pc`: the program counter, plus `<symbol+0xoff>` when you pass `--elf program.elf` and it has a `.symtab` (stripped ELFs and `.nro` files print the bare address).
+- `insn`: the raw opcode and the decoder's form of the instruction (`MoveWide { rd: 0, imm: 1, .. }`).
+- one line per register (`x0`..`x30`, `sp`, `v0`..`v31`, `nzcv`, `fpsr`, `fpcr`) whose recorded change differs, expected and actual side by side. `(unchanged)` means that side did not write the register in this step.
+- a `split` line under `nzcv`, `fpsr` or `fpcr` that decodes the flags (`nZCv`; `IOC|IXC`; `RMode=RP DN|FZ`).
+
+Real output (`tests/diverge_smoke.rs`, `trace_diff_readout_names_step_symbol_instruction_and_registers`; the pcs and opcodes are `_start` of `tests/linux-elf/bin/basic_math.elf`, and the second trace is perturbed in step 2):
+
+```text
+first divergence at step 2 at pc 0x0000000000210148: register x0: expected 0x0000000000000001 (interpreter), actual 0x0000000000000002 (tier3)
+  step     2
+  pc       0x0000000000210148 <_start+0xc>
+  insn     0x52800020 MoveWide { rd: 0, imm: 1, shift: 0, op: Movz, is_64: false }
+  x0       expected 0x0000000000000001 | actual 0x0000000000000002
+  nzcv     expected (unchanged) | actual 0x60000000
+           split    expected (unchanged) | actual nZCv
+  fpcr     expected (unchanged) | actual 0x03400000
+           split    expected (unchanged) | actual RMode=RP DN|FZ
+```
+
+With `--json`, the existing fields are unchanged. Passing `--elf` adds one `readout` object (`symbol_expected`, `symbol_actual`, `insn_expected`, `insn_actual`, `reg_diffs`); without `--elf` the JSON is byte-for-byte what it was.
+
+Limits: traces record only the registers each instruction changed, so a register that neither side wrote cannot appear. Only `run`/`run-nro` record `ounce.trace.v1` traces today (`run-elf` does not), so `--elf` suits traces of a program that has a matching ELF symbol file. `file:line` is not shown: reading `.debug_line` is a follow-up.
