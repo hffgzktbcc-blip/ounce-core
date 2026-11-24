@@ -1,5 +1,4 @@
 # cargo-deny configuration for ounce-core (MIT)
-# See docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md (Q1 pre-release gate)
 
 [advisories]
 ignore = [

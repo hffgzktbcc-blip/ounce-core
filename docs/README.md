@@ -13,13 +13,13 @@ For every user-visible change, follow the [family public documentation contract]
 | Working rules (single source) | [../AGENTS.md](../AGENTS.md) (`CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md` only point to it) |
 | Setup, branch names, claims, **known traps** | [AGENT_SETUP.md](AGENT_SETUP.md); phone/hub workflow [AGENT_HUB.md](AGENT_HUB.md) |
 | Backlog: what is ready, blocked, done | [PLAN.md](PLAN.md) (finished-task evidence: [history/PLAN-COMPLETED.md](history/PLAN-COMPLETED.md)) |
-| Direction for the Ounce family | [roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) (committed); [roadmap/OUNCE_EDUCATION_ROADMAP.md](roadmap/OUNCE_EDUCATION_ROADMAP.md) is a proposal only |
+| Current priorities | Live GitHub issues, PRs and releases, then [PLAN.md](PLAN.md). The [family roadmap](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) and [education roadmap](roadmap/OUNCE_EDUCATION_ROADMAP.md) are historical, not plans |
 | What the project does **not** prove | [LIMITS.md](LIMITS.md), [CAPABILITY_SCOPE.md](CAPABILITY_SCOPE.md) |
 | What shipped, by release | [Latest published GitHub release](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest); [../CHANGELOG.md](../CHANGELOG.md) for releases and unreleased changes; [releases/](releases/) for historical notes |
 
 ## For readers: start with a task
 
-- **Choose the right family project:** [four projects, four jobs](FAMILY.md), with plain-language entry points, tested limits and always-current release links.
+- **Choose the right project:** [Ounce-Core or DeckStream, and which siblings are archived](FAMILY.md).
 
 - **See why verification matters (no installation):** read the [Lua wrong-answer case study](community/LUA_FP_BUG_WALKTHROUGH.md). It links the original mismatch, the fix and the exact recorded evidence.
 - **Run a supported program:** follow the [Quick Start](QUICKSTART.md), then use [Add a Program](ADD_A_PROGRAM.md) for your own test.
@@ -54,6 +54,7 @@ Shipped or dropped (banner at the top of each; code is the truth): [design/m4-na
 
 ## History (never take work or rules from here)
 - [history/handoffs/](history/handoffs/): every past agent handoff note
+- [roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md): the November 2026 family plan; the sibling repositories it names are archived, so it is a record, not a plan
 - [history/PLAN-2026-11-07.md](history/PLAN-2026-11-07.md), [history/PLAN-COMPLETED.md](history/PLAN-COMPLETED.md): old plans and finished-task evidence
 - [history/E2_DECISION_MEMO.md](history/E2_DECISION_MEMO.md): one-day owner memo; decisions are recorded in LICENSE_DISPOSITION.md
 - [history/outreach/](history/outreach/), [history/community/](history/community/): marketing drafts, naming research, recruitment lead lists. These are **owner/marketing material, not agent tasks**.

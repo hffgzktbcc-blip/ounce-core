@@ -1,3 +1,5 @@
+> **Historical document, not an active plan (notice added 2026-11-24).** The sibling repositories `ounce-hb`, `ounce-runtime` and `Ounce-Spark` are archived on GitHub (`deckstream` is not archived); this roadmap records the plan as written in November 2026. Use live GitHub state and `docs/PLAN.md` for current work.
+
 # Ounce Family 1-Year Roadmap (Nov 2026 – Nov 2027) — Committed Plan
 
 *Vetted on 2026-11-14 across 4 independent reviews: Architecture & Contract Stability, Licensing & Clean-Room Legal, CI & Release Infrastructure, and Homebrew Developer Experience.*
