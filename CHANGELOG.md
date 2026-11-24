@@ -2,6 +2,10 @@
 
 Notable changes to ounce-core. Evidence for each release lives under `docs/releases/`.
 
+## Unreleased
+
+- Changed: `trace-diff --elf` now prints decoded instructions as GNU/LLVM-style AArch64 assembly while retaining the raw opcode and a diagnostic fallback for unsupported variants.
+
 ## 0.12.0 — 2026-11-24 (released)
 
 - Added: `run-elf -- <elf> [args]`, so `[target.aarch64-unknown-linux-musl] runner = "ounce-core run-elf --"` runs `cargo test` binaries (`#557`). The Quick Start and README give the `RUSTFLAGS` macOS needs (`-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=static`) and a recorded run of a three-test crate on an Apple M3.
