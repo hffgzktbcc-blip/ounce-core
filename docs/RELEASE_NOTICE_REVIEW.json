@@ -2,14 +2,12 @@
   "schema_version": 1,
   "release_scope": "Linux x86-64, Linux arm64, macOS arm64 and Windows x86-64 release binaries built with the native-jit feature (Tier-4). Other optional features excluded.",
   "cargo_lock_sha256": "8a1a312df6193c2719e9af2eb4f9d024589ca1a039a36ceca236949bb4dc0819",
-  "notices_sha256": "ef736dc0e7fb9f9d670c708d215a56177400a8c8a08c63691ea7bf50d6401134",
+  "notices_sha256": "d0d7e8e8384c4a0d2496e9dc4367b467fbf39bfe6d1c44752a30cba471bee034",
   "status": "REVIEWED",
   "reviewer": "Project owner \u2014 chat direction dated 2026-11-09; distribution choice delegated",
   "decision_evidence": "docs/releases/v0.6.0-distribution-decision.md",
   "open_items": [
-    "Owner review required for shipping native-jit (Tier-4) in release binaries: it adds 27 crates to the notice collection (cranelift-*, regalloc2, wasmtime-internal-core, target-lexicon, gimli, indexmap, hashbrown 0.16.1/0.17.1, libm, foldhash, and others; first-party ounce-recompiler is MIT). Confirm the added licences are acceptable for distribution: Apache-2.0 WITH LLVM-exception, MIT OR Apache-2.0, Zlib (foldhash), MIT (libm).",
-    "No licence file ships in the published package of: cranelift-assembler-x64 0.137.3, cranelift-assembler-x64-meta 0.137.3, cranelift-bitset 0.137.3, cranelift-isle 0.137.3, cranelift-srcgen 0.137.3, wasmtime-internal-core 50.0.3. THIRD_PARTY_NOTICES.txt lists them with their declared licence (Apache-2.0 WITH LLVM-exception) and repository but no text. Supply or approve the upstream bytecodealliance/wasmtime licence text.",
-    "Confirm the macOS release binary needs no extra signing entitlement for Tier-4 (see PR notes) and that the release workflow's native-jit build is accepted; then set status, reviewer, decision_evidence and decision_date yourself."
+    "Owner accepts the licences added by shipping native-jit (Tier-4) in release binaries: Apache-2.0 WITH LLVM-exception, MIT OR Apache-2.0, Zlib (foldhash), MIT (libm); 27 crates, listed in the PR and THIRD_PARTY_NOTICES.txt. First-party ounce-recompiler is MIT."
   ],
   "notice_sources": [
     {
@@ -205,11 +203,35 @@
       "source_revision": "9d92d5e95ab4c07c5d8bfd024bf2a17e96d20feb"
     },
     {
+      "package": "cranelift-assembler-x64",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": "https://raw.githubusercontent.com/bytecodealliance/wasmtime/v50.0.3/LICENSE",
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-assembler-x64-meta",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": "https://raw.githubusercontent.com/bytecodealliance/wasmtime/v50.0.3/LICENSE",
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
       "package": "cranelift-bforest",
       "version": "0.137.3",
       "notice": "LICENSE",
       "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
       "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-bitset",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": "https://raw.githubusercontent.com/bytecodealliance/wasmtime/v50.0.3/LICENSE",
       "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
     },
     {
@@ -261,11 +283,27 @@
       "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
     },
     {
+      "package": "cranelift-isle",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": "https://raw.githubusercontent.com/bytecodealliance/wasmtime/v50.0.3/LICENSE",
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
       "package": "cranelift-native",
       "version": "0.137.3",
       "notice": "LICENSE",
       "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
       "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-srcgen",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": "https://raw.githubusercontent.com/bytecodealliance/wasmtime/v50.0.3/LICENSE",
       "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
     },
     {
@@ -1309,6 +1347,14 @@
       "source_revision": "d77ef9f27cc336719b2d839d09ee6635dd22f758"
     },
     {
+      "package": "wasmtime-internal-core",
+      "version": "50.0.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": "https://raw.githubusercontent.com/bytecodealliance/wasmtime/v50.0.3/LICENSE",
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
       "package": "wayland-backend",
       "version": "0.3.17",
       "notice": "LICENSE.txt",
@@ -1621,6 +1667,13 @@
       "source": "https://github.com/madsmtm/objc2/blob/ee9a7ada2131f5944b8750428e265c15632f2a19/LICENSE-MIT.txt",
       "source_git_blob": "ce8c4c17fd88f6cf5f3720c08fa685434e3cbcbb",
       "scope": "Upstream supplied full MIT text; retain older inherited notices too. Does not assert that it exhausts every contributor notice or grants Apple SDK rights."
+    },
+    {
+      "path": "licenses/wasmtime-LICENSE-Apache-2.0_WITH_LLVM-exception.txt",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source": "https://raw.githubusercontent.com/bytecodealliance/wasmtime/v50.0.3/LICENSE",
+      "source_git_blob": "f9d81955f4bcb8f96a025e2ecc46f39ec536d465",
+      "scope": "Upstream bytecodealliance/wasmtime LICENSE at tag v50.0.3 (commit 9bbe3e2f859a0d67af6a51e614b77a4b97cdc907): Apache-2.0 plus the LLVM Exceptions section. Covers cranelift-assembler-x64, cranelift-assembler-x64-meta, cranelift-bitset, cranelift-isle, cranelift-srcgen and wasmtime-internal-core, whose crates.io packages ship no licence file; identical bytes to the linux-raw-sys LICENSE-Apache-2.0_WITH_LLVM-exception notice."
     }
   ],
   "artifact_qualification": {
