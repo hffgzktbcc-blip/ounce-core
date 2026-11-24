@@ -8,6 +8,27 @@
 // bit-field layouts next to their non-zero neighbours; they are documentation, not mistakes.
 #![allow(clippy::identity_op)]
 
+// While `--report-json=-` owns stdout, every `print!`/`println!` in this crate goes to stderr so stdout stays pure
+// `ounce.run.v1` JSON. These shadow the std macros for all modules declared below.
+macro_rules! print {
+    ($($arg:tt)*) => {
+        if crate::run_report::is_stdout_report() {
+            ::std::eprint!($($arg)*)
+        } else {
+            ::std::print!($($arg)*)
+        }
+    };
+}
+macro_rules! println {
+    ($($arg:tt)*) => {
+        if crate::run_report::is_stdout_report() {
+            ::std::eprintln!($($arg)*)
+        } else {
+            ::std::println!($($arg)*)
+        }
+    };
+}
+
 mod audio;
 mod census;
 mod cli;
