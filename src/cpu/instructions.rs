@@ -419,6 +419,16 @@ pub enum Instruction {
         is_exclusive: bool,
     },
 
+    /// Exclusive pair load / store (`LDXP`, `LDAXP`, `STXP`, `STLXP`; W or X pairs). `Rt` is the lower address.
+    LoadStoreExclusivePair {
+        rt: u8,
+        rt2: u8,
+        rn: u8,
+        rs: u8,
+        is_64: bool,
+        is_load: bool,
+    },
+
     /// FEAT_LSE `LD<op>[A][L]` / `ST<op>` / `SWP[A][L]` (B/H/W/X): atomically `[Xn] = op([Xn], Rs)`, old value to Rt
     /// (zero-extended; Rt = ZR discards it). Acquire/release bits do not matter on this single-core emulator.
     AtomicRmw {
