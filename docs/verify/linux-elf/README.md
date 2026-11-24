@@ -18,7 +18,7 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
 
 - ELF64 little-endian AArch64 `ET_EXEC`; `PT_LOAD` mapping; stack with argc, argv, empty envp, auxv
   (PHDR, PHENT, PHNUM, PAGESZ, ENTRY, UID/GID, HWCAP, CLKTCK, SECURE, RANDOM, PLATFORM, EXECFN).
-  `AT_HWCAP` is `0x20093` (FP, ASIMD, PMULL, CRC32, SHA3), known-answer tested on the interpreter, Tier-3 and Tier-4.
+  `AT_HWCAP` advertises the features listed in [LIMITS.md](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026), known-answer tested on the interpreter, Tier-3 and Tier-4.
 - Syscalls (via `SVC #0`, number in x8): `write`, `writev` (fd 1 and 2 only), `exit`, `exit_group`,
   `brk`, `mmap` (anonymous only, including sparse reservations and `MAP_FIXED`), `mprotect`, `munmap`, `mremap` (anonymous mappings; shrink in place, grow only with `MREMAP_MAYMOVE`), `ioctl` (returns
   ENOTTY), `set_tid_address`, `rt_sigaction`/`rt_sigprocmask`, `sigaltstack`, `rt_sigreturn`, `getpid`/`gettid`,
