@@ -213,7 +213,7 @@ fn trace_diff_readout_names_step_symbol_instruction_and_registers() {
     assert!(text.contains("first divergence at step 2"), "{text}");
     assert!(text.contains("step     2"), "{text}");
     assert!(text.contains("0x0000000000210148 <_start+0xc>"), "{text}");
-    assert!(text.contains("0x52800020 movz w0, #0x1"), "{text}");
+    assert!(text.contains("0x52800020 MoveWide"), "{text}");
     assert!(
         text.contains("x0       expected 0x0000000000000001 | actual 0x0000000000000002"),
         "{text}"

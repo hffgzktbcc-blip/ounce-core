@@ -12,7 +12,7 @@ To diagnose your own `.nro` or `.elf` program rather than the retained SDL2/audi
 - `cargo run --release -- ui` opens the local Verification Workbench (`docs/INTERACTIVE_LAB.md`), which runs your `.nro` on Tier-3, Tier-4, and optionally this computer's CPU (`native`), compares outputs, and saves `result.json` under `~/Library/Application Support/Ounce Core/Checks/<id>/` (openable in the Mac app's **File > Open Saved Results…**).
 - `cargo run --release -- diverge <program.nro>` (`docs/DIVERGE.md`) replays sampled register-only instructions on this computer's CPU to isolate the first instruction that disagrees.
 - `cargo run --release -- run-elf <program.elf>` runs a static AArch64 Linux ELF binary.
-- `cargo run --release -- trace-diff <expected.json> <actual.json> [--elf program.elf]` prints the first step where two `ounce.trace.v1` traces differ: step, `symbol+0xoff`, the raw opcode plus GNU/LLVM-style decoded assembly, differing registers and the NZCV/FPSR/FPCR split (`docs/DIVERGE.md`).
+- `cargo run --release -- trace-diff <expected.json> <actual.json> [--elf program.elf]` prints the first step where two `ounce.trace.v1` traces differ: step, `symbol+0xoff`, decoded instruction, differing registers and the NZCV/FPSR/FPCR split (`docs/DIVERGE.md`).
 - When a run exposes a missing instruction, missing SVC, or engine divergence in Ounce Core, file an issue with `.github/ISSUE_TEMPLATE/emulation_bug.yml` including the `run-nro` command, host OS, `git rev-parse HEAD`, and the printed stop line.
 
 From a source checkout, build the single-file distribution and its checksum:

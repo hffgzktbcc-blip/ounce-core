@@ -4,7 +4,8 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
-- Changed: `trace-diff --elf` now prints decoded instructions as GNU/LLVM-style AArch64 assembly while retaining the raw opcode and a diagnostic fallback for unsupported variants.
+- Added: `LDXP`, `LDAXP`, `STXP` and `STLXP` (W and X pairs), so C `__int128` atomics and `portable-atomic` 128-bit loops run. Pairs must be aligned to the whole pair; `LDXP Rt, Rt` (including `XZR, XZR`) stops as undefined, as it raises `SIGILL` on the Apple M3. Known-answer tested against M3 output on the interpreter, Tier-3 and Tier-4 (`lse_kat`).
+- Added: `AT_HWCAP` advertises `HWCAP_ATOMICS`, now `0x20193`. Rust and C programs built without `+lse` take the `FEAT_LSE` instructions through outline atomics; `lse_kat` value-checks every LSE form (`CAS{B,H,}`, `CASP`, `LD<op>`, `ST<op>`, `SWP`, `LDAPR`) against the M3.
 
 ## 0.12.0 — 2026-11-24 (released)
 

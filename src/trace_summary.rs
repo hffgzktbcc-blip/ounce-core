@@ -634,7 +634,7 @@ fn flag_split(rank: usize, v: u128) -> String {
 
 /// Instruction name from the decoder's `Debug` form, e.g. `AddShifted { rd: 0, .. }`.
 fn decoded(opcode: u32) -> String {
-    crate::disasm::format_instruction(opcode, crate::cpu::decoder::decode(opcode))
+    format!("{:?}", crate::cpu::decoder::decode(opcode))
 }
 
 impl Comparison {
