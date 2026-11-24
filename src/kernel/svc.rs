@@ -1004,9 +1004,16 @@ impl HorizonKernel {
                     let text = String::from_utf8_lossy(&buf);
                     // Flush now: stdout holds a partial line until the next newline, and a hung guest that an outer
                     // timeout kills would lose it (#476). After a newline-terminated write the buffer is empty already.
-                    let mut out = std::io::stdout().lock();
-                    let _ = std::io::Write::write_all(&mut out, text.as_bytes());
-                    let _ = std::io::Write::flush(&mut out);
+                    // With `--report-json=-` stdout belongs to the JSON report, so guest output goes to stderr.
+                    if crate::run_report::is_stdout_report() {
+                        let mut out = std::io::stderr().lock();
+                        let _ = std::io::Write::write_all(&mut out, text.as_bytes());
+                        let _ = std::io::Write::flush(&mut out);
+                    } else {
+                        let mut out = std::io::stdout().lock();
+                        let _ = std::io::Write::write_all(&mut out, text.as_bytes());
+                        let _ = std::io::Write::flush(&mut out);
+                    }
                 } else {
                     cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
                     return SvcResult::Success;
