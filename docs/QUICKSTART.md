@@ -2,10 +2,9 @@
 
 Run one homebrew program and, if you want a machine-readable result, write an
 `ounce.run.v1` report. This is the short path. Limits are in
-[LIMITS.md](LIMITS.md). The family roadmap is in
-[roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md).
+[LIMITS.md](LIMITS.md).
 
-You need Rust 1.89 or newer (edition 2024). Default headless builds require zero C system libraries; pass `--features host-io` (which needs `libasound2-dev libudev-dev` on Debian or Ubuntu) only if you want desktop audio output and physical controller input.
+You need Rust 1.89 or newer (edition 2024). Default headless builds require zero C system libraries; pass `--features host-io` only if you want desktop audio output and physical controller input. Only that opt-in feature needs `libasound2-dev libudev-dev` on Debian or Ubuntu.
 
 ```sh
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
@@ -61,20 +60,53 @@ cargo run --release -- run-elf path/to/program.elf --cpu=tier3 --deterministic
 ```
 
 That runner is for static musl AArch64 `ET_EXEC` programs. See
-[verify/linux-elf/README.md](verify/linux-elf/README.md).
+[verify/linux-elf/README.md](verify/linux-elf/README.md). Put the ELF after `--` to pass it
+guest arguments without host option parsing: `ounce-core run-elf -- program.elf arg1 arg2`.
+Guest file descriptor 0 is at end-of-file unless you pass `--stdin` (read the host's stdin) or
+`--stdin=<path>` (read a file); at most 64 MiB is read. `getrandom` returns a fixed,
+reproducible byte stream, not host entropy.
+
+## `cargo test` for aarch64 Linux (musl) through Ounce-Core
+
+Cargo can run test binaries built for another target through a *runner*. Install the target
+(`rustup target add aarch64-unknown-linux-musl`), put `ounce-core` on your `PATH`, and create
+`.cargo/config.toml` in your project:
+
+```toml
+[target.aarch64-unknown-linux-musl]
+runner = "ounce-core run-elf --"
+```
+
+On macOS the default flags fail to link (Apple's linker does not understand the GNU options
+rustc passes), and `ounce-core` rejects static-PIE (`ET_DYN`). Link with `rust-lld` and a
+static, non-PIE layout:
+
+```sh
+RUSTFLAGS="-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=static" \
+  cargo test --target aarch64-unknown-linux-musl -- --test-threads=1
+```
+
+`--test-threads=1` is needed because the runner executes single-threaded guests only (no
+`futex`, no `clone`). The result below is from a three-test library crate on an Apple M3 Mac
+(Rust 1.98, `ounce-core` built from `main` at `14b3c4d`); the tests ran on the Tier-3 engine:
+
+```text
+running 3 tests
+test tests::adds ... ok
+test tests::formats_floats ... ok
+test tests::sums_a_vec ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+[run-elf] engine=Tier-3 instructions=164740 syscalls=74
+```
+
+This shows that small test binaries run; it does not show that every crate's tests do. Tests
+that spawn threads or need AES (`FEAT_AES` is not implemented) or other unsupported system
+calls stop with a diagnosis ([limits](LIMITS.md)).
 
 ## Where the other tools live
 
-They are separate repositories. ounce-core does not build or download them.
-
-| Tool | What to run | Where |
-| --- | --- | --- |
-| ounce-hb `doctor` | `ounce-hb doctor` or `ounce-hb doctor --json` | [ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb) (see the published [v0.2.0 release](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.2.0) and installed CLI version) |
-| ounce-hb `repro` / `run --auto` | see that repo's quick start | same |
-| `setup-ounce` | GitHub Action `hffgzktbcc-blip/ounce-hb/.github/actions/setup-ounce` | same repo; its `doctor` step needs a build that contains `doctor` |
-
-`doctor` checks that the engine binaries are on `PATH` (or `OUNCE_CORE_BIN` /
-`OUNCE_RUNTIME_BIN`). It does not install a compiler. `setup-ounce` installs
-release archives. Linux arm64 archive selection and ounce-runtime checksum
-verification were added in ounce-hb pull request 40, which is merged; check the
-ounce-hb release you install includes it.
+`ounce-hb`, `ounce-runtime` and `Ounce-Spark` are archived on GitHub (checked 2026-11-24).
+This repository does not build, download or recommend them; the Quick Start above needs only
+`ounce-core`.

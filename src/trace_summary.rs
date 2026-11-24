@@ -21,7 +21,8 @@ pub const MAX_STEP_LIMIT: u64 = 65_536;
 pub const DEFAULT_WINDOW: usize = 4;
 pub const MAX_WINDOW: usize = 16;
 
-const USAGE: &str = "usage: ounce-core trace-diff <expected.json> <actual.json> [--window N] [--json out.json]";
+const USAGE: &str =
+    "usage: ounce-core trace-diff <expected.json> <actual.json> [--window N] [--elf program.elf] [--json out.json]";
 
 /// Register ranks in comparison order: x0..x30, sp, nzcv, fpsr, fpcr, v0..v31.
 const REG_COUNT: usize = 67;
@@ -443,6 +444,8 @@ pub struct Comparison {
     pub window: Vec<(u64, u64, u32)>,
     pub pc: (Option<u64>, Option<u64>),
     pub opcode: (Option<u32>, Option<u32>),
+    /// The two steps at the divergence index (either may be absent for a `length` divergence).
+    pub steps: (Option<Step>, Option<Step>),
 }
 
 fn first_reg_diff(a: &[(usize, u128)], b: &[(usize, u128)]) -> Option<(usize, Option<u128>, Option<u128>)> {
@@ -569,13 +572,149 @@ pub fn compare(expected: &Trace, actual: &Trace, window: usize) -> Comparison {
         window: window_steps,
         pc,
         opcode,
+        steps: match at {
+            Some(at) => (expected.steps.get(at).cloned(), actual.steps.get(at).cloned()),
+            None => (None, None),
+        },
+    }
+}
+
+/// Registers whose recorded change differs between the two steps, in canonical order: `(rank, expected, actual)`,
+/// where `None` means that side did not change the register in this step.
+fn reg_diffs(e: &Step, a: &Step) -> Vec<(usize, Option<u128>, Option<u128>)> {
+    let mut ranks: Vec<usize> = e.regs.iter().chain(&a.regs).map(|r| r.0).collect();
+    ranks.sort_unstable();
+    ranks.dedup();
+    let find = |s: &Step, r: usize| s.regs.iter().find(|x| x.0 == r).map(|x| x.1);
+    ranks
+        .into_iter()
+        .filter_map(|r| {
+            let (x, y) = (find(e, r), find(a, r));
+            (x != y).then_some((r, x, y))
+        })
+        .collect()
+}
+
+/// `NZcv`-style flags (upper case = set), FPSR cumulative flags, or FPCR mode bits, for the three status registers.
+fn flag_split(rank: usize, v: u128) -> String {
+    let v = v as u32;
+    let names = |bits: &[(u32, &str)]| {
+        let set: Vec<&str> = bits.iter().filter(|(b, _)| v >> b & 1 == 1).map(|(_, n)| *n).collect();
+        if set.is_empty() { "-".to_string() } else { set.join("|") }
+    };
+    match rank {
+        RANK_NZCV => [(31, "N"), (30, "Z"), (29, "C"), (28, "V")]
+            .iter()
+            .map(|(b, n)| {
+                if v >> b & 1 == 1 {
+                    n.to_string()
+                } else {
+                    n.to_lowercase()
+                }
+            })
+            .collect(),
+        RANK_FPSR => names(&[
+            (0, "IOC"),
+            (1, "DZC"),
+            (2, "OFC"),
+            (3, "UFC"),
+            (4, "IXC"),
+            (7, "IDC"),
+            (27, "QC"),
+        ]),
+        _ => {
+            let mode = ["RN", "RP", "RM", "RZ"][(v >> 22 & 3) as usize];
+            format!(
+                "RMode={mode} {}",
+                names(&[(26, "AHP"), (25, "DN"), (24, "FZ"), (19, "FZ16")])
+            )
+        }
+    }
+}
+
+/// Instruction name from the decoder's `Debug` form, e.g. `AddShifted { rd: 0, .. }`.
+fn decoded(opcode: u32) -> String {
+    format!("{:?}", crate::cpu::decoder::decode(opcode))
+}
+
+impl Comparison {
+    /// The multi-line readout printed after the headline: step, pc (+ `symbol+0xoff` when `symbols` is given), the
+    /// decoded instruction, the registers that differ side by side, and the NZCV/FPSR/FPCR split.
+    pub fn readout(&self, symbols: Option<&crate::linux::elf::SymbolTable>) -> Vec<String> {
+        let (Some(d), (e, a)) = (&self.divergence, &self.steps) else {
+            return Vec::new();
+        };
+        let sym = |pc: u64| match symbols.and_then(|t| t.resolve(pc)) {
+            Some(s) => format!("{} <{s}>", hex64(pc)),
+            None => hex64(pc),
+        };
+        let pair = |x: Option<String>, y: Option<String>| match (&x, &y) {
+            (Some(x), Some(y)) if x == y => x.clone(),
+            _ => format!(
+                "expected {} | actual {}",
+                x.unwrap_or_else(|| "(absent)".into()),
+                y.unwrap_or_else(|| "(absent)".into())
+            ),
+        };
+        let mut out = vec![format!("  step     {}", d.step)];
+        out.push(format!(
+            "  pc       {}",
+            pair(e.as_ref().map(|s| sym(s.pc)), a.as_ref().map(|s| sym(s.pc)))
+        ));
+        out.push(format!(
+            "  insn     {}",
+            pair(
+                e.as_ref().map(|s| format!("0x{:08x} {}", s.opcode, decoded(s.opcode))),
+                a.as_ref().map(|s| format!("0x{:08x} {}", s.opcode, decoded(s.opcode)))
+            )
+        ));
+        if let (Some(e), Some(a)) = (e, a) {
+            let show = |rank, v: Option<u128>| v.map_or("(unchanged)".to_string(), |v| reg_hex(rank, v));
+            for (rank, x, y) in reg_diffs(e, a) {
+                out.push(format!(
+                    "  {:<8} expected {} | actual {}",
+                    reg_name(rank),
+                    show(rank, x),
+                    show(rank, y)
+                ));
+                if (RANK_NZCV..=RANK_FPCR).contains(&rank) {
+                    let split = |v: Option<u128>| v.map_or("(unchanged)".to_string(), |v| flag_split(rank, v));
+                    out.push(format!(
+                        "           split    expected {} | actual {}",
+                        split(x),
+                        split(y)
+                    ));
+                }
+            }
+        }
+        out
+    }
+
+    /// Additive JSON for the readout (only written when `--elf` is given; see docs/DIVERGE.md).
+    fn readout_json(&self, symbols: &crate::linux::elf::SymbolTable) -> Value {
+        let (e, a) = &self.steps;
+        let reg = |rank: usize, v: Option<u128>| v.map(|v| reg_hex(rank, v));
+        let diffs: Vec<Value> = match (e, a) {
+            (Some(e), Some(a)) => reg_diffs(e, a)
+                .into_iter()
+                .map(|(r, x, y)| json!({"reg": reg_name(r), "expected": reg(r, x), "actual": reg(r, y)}))
+                .collect(),
+            _ => Vec::new(),
+        };
+        json!({
+            "symbol_expected": e.as_ref().and_then(|s| symbols.resolve(s.pc)),
+            "symbol_actual": a.as_ref().and_then(|s| symbols.resolve(s.pc)),
+            "insn_expected": e.as_ref().map(|s| decoded(s.opcode)),
+            "insn_actual": a.as_ref().map(|s| decoded(s.opcode)),
+            "reg_diffs": diffs,
+        })
     }
 }
 
 impl Comparison {
     pub fn to_json(&self) -> Value {
         let d = self.divergence.as_ref();
-        json!({
+        let doc = json!({
             "schema": SCHEMA,
             "kind": "divergence",
             "engine": "ounce-core",
@@ -595,7 +734,17 @@ impl Comparison {
             "opcode_expected": self.opcode.0.map(|o| format!("0x{o:08x}")),
             "opcode_actual": self.opcode.1.map(|o| format!("0x{o:08x}")),
             "window": self.window.iter().map(|(i, pc, op)| json!({"i": i, "pc": hex64(*pc), "opcode": format!("0x{op:08x}")})).collect::<Vec<_>>(),
-        })
+        });
+        doc
+    }
+
+    /// [`Comparison::to_json`] plus a `readout` object (symbols, decoded instructions, differing registers).
+    pub fn to_json_with_readout(&self, symbols: &crate::linux::elf::SymbolTable) -> Value {
+        let mut doc = self.to_json();
+        if self.divergence.is_some() {
+            doc["readout"] = self.readout_json(symbols);
+        }
+        doc
     }
 
     fn describe(&self) -> String {
@@ -647,7 +796,7 @@ pub fn run_cli(args: &[String]) -> i32 {
 }
 
 fn cli(args: &[String]) -> Result<i32, String> {
-    let (mut files, mut window, mut json_out) = (Vec::new(), DEFAULT_WINDOW, None);
+    let (mut files, mut window, mut json_out, mut elf) = (Vec::new(), DEFAULT_WINDOW, None, None);
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -658,6 +807,7 @@ fn cli(args: &[String]) -> Result<i32, String> {
                     .map_err(|_| format!("--window needs a non-negative integer, got {v:?}\n{USAGE}"))?;
             }
             "--json" => json_out = Some(it.next().ok_or(USAGE)?.clone()),
+            "--elf" => elf = Some(it.next().ok_or(USAGE)?.clone()),
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}\n{USAGE}")),
             _ => files.push(arg.as_str()),
         }
@@ -666,9 +816,22 @@ fn cli(args: &[String]) -> Result<i32, String> {
         return Err(USAGE.into());
     };
     let comparison = compare(&load(expected)?, &load(actual)?, window);
+    let symbols = match &elf {
+        Some(path) => Some(crate::linux::elf::SymbolTable::parse(
+            &std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?,
+        )),
+        None => None,
+    };
     println!("{}", comparison.describe());
+    for line in comparison.readout(symbols.as_ref()) {
+        println!("{line}");
+    }
     if let Some(path) = json_out {
-        let bytes = serde_json::to_vec_pretty(&comparison.to_json()).map_err(|e| e.to_string())?;
+        let doc = match &symbols {
+            Some(t) => comparison.to_json_with_readout(t),
+            None => comparison.to_json(),
+        };
+        let bytes = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
         if let Some(dir) = std::path::Path::new(&path)
             .parent()
             .filter(|d| !d.as_os_str().is_empty())

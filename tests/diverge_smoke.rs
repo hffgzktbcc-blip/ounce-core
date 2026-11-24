@@ -168,3 +168,66 @@ fn static_elf_forwards_program_args_and_rejects_bad_format() {
     let _ = std::fs::remove_file(&bad);
     assert_eq!(bad_out.status.code(), Some(2));
 }
+
+/// `trace-diff --elf` prints the actionable readout: step, `symbol+0xoff`, decoded instruction, the registers that
+/// differ side by side and the NZCV/FPCR split. The traces are real `_start` addresses and opcodes of
+/// `basic_math.elf`; the "actual" side is perturbed in step 2 (x0, nzcv and fpcr).
+#[test]
+fn trace_diff_readout_names_step_symbol_instruction_and_registers() {
+    let elf = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/basic_math.elf");
+    let dir = std::env::temp_dir().join(format!("ounce-diverge-readout-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let trace = |engine: &str, x0: &str, extra: serde_json::Value| {
+        let mut last = serde_json::json!({"x0": x0});
+        last.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        serde_json::json!({
+            "schema": "ounce.trace.v1", "kind": "trace", "engine": engine, "engine_version": "0",
+            "step_limit": 16, "steps_executed": 3, "steps_recorded": 3, "truncated": false,
+            "steps": [
+                {"i": 0, "pc": "0x000000000021013c", "opcode": "0xd10083ff", "regs": {}},
+                {"i": 1, "pc": "0x0000000000210140", "opcode": "0x52800808", "regs": {"x8": "0x0000000000000040"}},
+                {"i": 2, "pc": "0x0000000000210148", "opcode": "0x52800020", "regs": last},
+            ],
+        })
+    };
+    let (a, b) = (dir.join("expected.json"), dir.join("actual.json"));
+    std::fs::write(
+        &a,
+        trace("interpreter", "0x0000000000000001", serde_json::json!({})).to_string(),
+    )
+    .unwrap();
+    let extra = serde_json::json!({"nzcv": "0x60000000", "fpcr": "0x03400000"});
+    std::fs::write(&b, trace("tier3", "0x0000000000000002", extra).to_string()).unwrap();
+    let json = dir.join("out.json");
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .arg("trace-diff")
+        .args([&a, &b])
+        .arg("--elf")
+        .arg(elf)
+        .arg("--json")
+        .arg(&json)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(text.contains("first divergence at step 2"), "{text}");
+    assert!(text.contains("step     2"), "{text}");
+    assert!(text.contains("0x0000000000210148 <_start+0xc>"), "{text}");
+    assert!(text.contains("0x52800020 MoveWide"), "{text}");
+    assert!(
+        text.contains("x0       expected 0x0000000000000001 | actual 0x0000000000000002"),
+        "{text}"
+    );
+    assert!(
+        text.contains("nzcv     expected (unchanged) | actual 0x60000000"),
+        "{text}"
+    );
+    assert!(text.contains("split    expected (unchanged) | actual nZCv"), "{text}");
+    assert!(text.contains("RMode=RP DN|FZ"), "{text}");
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&json).unwrap()).unwrap();
+    assert_eq!(v["step"], 2, "existing fields are unchanged");
+    assert_eq!(v["readout"]["symbol_actual"], "_start+0xc");
+    assert_eq!(v["readout"]["reg_diffs"][0]["reg"], "x0");
+    assert_eq!(v["readout"]["reg_diffs"].as_array().unwrap().len(), 3);
+    let _ = std::fs::remove_dir_all(&dir);
+}
