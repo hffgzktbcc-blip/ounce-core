@@ -1,12 +1,16 @@
 {
   "schema_version": 1,
-  "release_scope": "Default Linux x86-64, Linux arm64, macOS arm64 and Windows x86-64 binaries. Optional features excluded.",
+  "release_scope": "Linux x86-64, Linux arm64, macOS arm64 and Windows x86-64 release binaries built with the native-jit feature (Tier-4). Other optional features excluded.",
   "cargo_lock_sha256": "8a1a312df6193c2719e9af2eb4f9d024589ca1a039a36ceca236949bb4dc0819",
-  "notices_sha256": "b899daab8781da05181486b514bedcff973ef1a940c28341a53ef1077e196a9c",
+  "notices_sha256": "ef736dc0e7fb9f9d670c708d215a56177400a8c8a08c63691ea7bf50d6401134",
   "status": "REVIEWED",
   "reviewer": "Project owner \u2014 chat direction dated 2026-11-09; distribution choice delegated",
   "decision_evidence": "docs/releases/v0.6.0-distribution-decision.md",
-  "open_items": [],
+  "open_items": [
+    "Owner review required for shipping native-jit (Tier-4) in release binaries: it adds 27 crates to the notice collection (cranelift-*, regalloc2, wasmtime-internal-core, target-lexicon, gimli, indexmap, hashbrown 0.16.1/0.17.1, libm, foldhash, and others; first-party ounce-recompiler is MIT). Confirm the added licences are acceptable for distribution: Apache-2.0 WITH LLVM-exception, MIT OR Apache-2.0, Zlib (foldhash), MIT (libm).",
+    "No licence file ships in the published package of: cranelift-assembler-x64 0.137.3, cranelift-assembler-x64-meta 0.137.3, cranelift-bitset 0.137.3, cranelift-isle 0.137.3, cranelift-srcgen 0.137.3, wasmtime-internal-core 50.0.3. THIRD_PARTY_NOTICES.txt lists them with their declared licence (Apache-2.0 WITH LLVM-exception) and repository but no text. Supply or approve the upstream bytecodealliance/wasmtime licence text.",
+    "Confirm the macOS release binary needs no extra signing entitlement for Tier-4 (see PR notes) and that the release workflow's native-jit build is accepted; then set status, reviewer, decision_evidence and decision_date yourself."
+  ],
   "notice_sources": [
     {
       "package": "ab_glyph",
@@ -47,6 +51,22 @@
       "sha256": "219766b3420f49f6204143c5f3ef750888fb6de29ce5f63e909f146e90b375a2",
       "source_url": null,
       "source_revision": "2239f2e3ce3350934e7b1a6e206c267623b1e60d"
+    },
+    {
+      "package": "arbitrary",
+      "version": "1.5.0",
+      "notice": "LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": null,
+      "source_revision": "9807b599146c301a67e20692635352c9db70bff2"
+    },
+    {
+      "package": "arbitrary",
+      "version": "1.5.0",
+      "notice": "LICENSE-MIT",
+      "sha256": "15656cc11a8331f28c0986b8ab97220d3e76f98e60ed388b5ffad37dfac4710c",
+      "source_url": null,
+      "source_revision": "9807b599146c301a67e20692635352c9db70bff2"
     },
     {
       "package": "bitflags",
@@ -185,6 +205,70 @@
       "source_revision": "9d92d5e95ab4c07c5d8bfd024bf2a17e96d20feb"
     },
     {
+      "package": "cranelift-bforest",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-codegen",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-codegen-meta",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-codegen-shared",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-control",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-entity",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-frontend",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
+      "package": "cranelift-native",
+      "version": "0.137.3",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "9bbe3e2f859a0d67af6a51e614b77a4b97cdc907"
+    },
+    {
       "package": "crypto-common",
       "version": "0.1.7",
       "notice": "LICENSE-APACHE",
@@ -265,6 +349,22 @@
       "source_revision": "c4c48bad50482df2544115ba971acfd5916e6140"
     },
     {
+      "package": "equivalent",
+      "version": "1.0.3",
+      "notice": "LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": null,
+      "source_revision": "4ee88130bd4ab3229e785533da2af641be22deac"
+    },
+    {
+      "package": "equivalent",
+      "version": "1.0.3",
+      "notice": "LICENSE-MIT",
+      "sha256": "7365cc8878a1d7ce155a58c4ca09c3d7a6be413efa5334a80ea842912b669349",
+      "source_url": null,
+      "source_revision": "4ee88130bd4ab3229e785533da2af641be22deac"
+    },
+    {
       "package": "fastrand",
       "version": "2.5.0",
       "notice": "LICENSE-APACHE",
@@ -311,6 +411,14 @@
       "sha256": "65fdb6c76cd61612070c066eec9ecdb30ee74fb27859d0d9af58b9f499fd0c3e",
       "source_url": null,
       "source_revision": "4b4784ebfd3332dc61f0640764d6f1140e03a9ab"
+    },
+    {
+      "package": "foldhash",
+      "version": "0.2.0",
+      "notice": "LICENSE",
+      "sha256": "b1181a40b2a7b25cf66fd01481713bc1005df082c53ef73e851e55071b102744",
+      "source_url": null,
+      "source_revision": "8f878c636fda9c9e93384824ea45e06d03f009f5"
     },
     {
       "package": "generic-array",
@@ -375,6 +483,86 @@
       "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
       "source_url": "https://gitlab.com/gilrs-project/gilrs/-/raw/07e286e24b046cf39e5c367daa2770b805a64692/LICENSE-APACHE",
       "source_revision": "07e286e24b046cf39e5c367daa2770b805a64692"
+    },
+    {
+      "package": "gimli",
+      "version": "0.33.0",
+      "notice": "LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": null,
+      "source_revision": "033ef8dd5748236aa5bcecc868207a40e4e3f597"
+    },
+    {
+      "package": "gimli",
+      "version": "0.33.0",
+      "notice": "LICENSE-MIT",
+      "sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0",
+      "source_url": null,
+      "source_revision": "033ef8dd5748236aa5bcecc868207a40e4e3f597"
+    },
+    {
+      "package": "hashbrown",
+      "version": "0.16.1",
+      "notice": "LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": null,
+      "source_revision": "1876e4f02708b93903d55ef598f68e82a826518f"
+    },
+    {
+      "package": "hashbrown",
+      "version": "0.16.1",
+      "notice": "LICENSE-MIT",
+      "sha256": "ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2",
+      "source_url": null,
+      "source_revision": "1876e4f02708b93903d55ef598f68e82a826518f"
+    },
+    {
+      "package": "hashbrown",
+      "version": "0.17.1",
+      "notice": "LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": null,
+      "source_revision": "c62a63a61b7caf2de8f9ecb7b06a66b0ab6bdf3d"
+    },
+    {
+      "package": "hashbrown",
+      "version": "0.17.1",
+      "notice": "LICENSE-MIT",
+      "sha256": "ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2",
+      "source_url": null,
+      "source_revision": "c62a63a61b7caf2de8f9ecb7b06a66b0ab6bdf3d"
+    },
+    {
+      "package": "heck",
+      "version": "0.5.0",
+      "notice": "LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": null,
+      "source_revision": "070693322aee7c5c7fbee7c9964bf8d7d3a29c96"
+    },
+    {
+      "package": "heck",
+      "version": "0.5.0",
+      "notice": "LICENSE-MIT",
+      "sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0",
+      "source_url": null,
+      "source_revision": "070693322aee7c5c7fbee7c9964bf8d7d3a29c96"
+    },
+    {
+      "package": "indexmap",
+      "version": "2.14.2",
+      "notice": "LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": null,
+      "source_revision": "41a870887c4c77adf665886e63df08f406bfe37a"
+    },
+    {
+      "package": "indexmap",
+      "version": "2.14.2",
+      "notice": "LICENSE-MIT",
+      "sha256": "ecc269ef87fd38a1d98e30bfac9ba964a9dbd9315c3770fed98d4d7cb5882055",
+      "source_url": null,
+      "source_revision": "41a870887c4c77adf665886e63df08f406bfe37a"
     },
     {
       "package": "inotify",
@@ -447,6 +635,14 @@
       "sha256": "b29f8b01452350c20dd1af16ef83b598fea3053578ccc1c7a0ef40e57be2620f",
       "source_url": null,
       "source_revision": "f4ec9e702de2d0778bccff8525dc44e4cacac2d1"
+    },
+    {
+      "package": "libm",
+      "version": "0.2.16",
+      "notice": "LICENSE.txt",
+      "sha256": "3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7",
+      "source_url": null,
+      "source_revision": "dfd2203a4d6110820ad7bb65cafe1bf331a03a3d"
     },
     {
       "package": "libudev-sys",
@@ -745,6 +941,30 @@
       "source_revision": "5fda8e8420b069368e9450e70c2869e32dcdffc1"
     },
     {
+      "package": "regalloc2",
+      "version": "0.15.2",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "2fe490bc9dda433f70c54f90f7633ed929f693d9"
+    },
+    {
+      "package": "rustc-hash",
+      "version": "2.1.3",
+      "notice": "LICENSE-APACHE",
+      "sha256": "95bd3988beee069fa2848f648dab43cc6e0b2add2ad6bcb17360caf749802bcc",
+      "source_url": null,
+      "source_revision": "c13e7ccca705e6255387a2ebc6dca142d6881621"
+    },
+    {
+      "package": "rustc-hash",
+      "version": "2.1.3",
+      "notice": "LICENSE-MIT",
+      "sha256": "30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652",
+      "source_url": null,
+      "source_revision": "c13e7ccca705e6255387a2ebc6dca142d6881621"
+    },
+    {
       "package": "rustix",
       "version": "1.1.5",
       "notice": "LICENSE-APACHE",
@@ -873,6 +1093,22 @@
       "source_revision": "bb9e44b68571e28e88196dcdb11fab89f3df5a0a"
     },
     {
+      "package": "stable_deref_trait",
+      "version": "1.2.1",
+      "notice": "LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "source_url": null,
+      "source_revision": "30002b4228f7cdee309217b6bf6eee099dda0b00"
+    },
+    {
+      "package": "stable_deref_trait",
+      "version": "1.2.1",
+      "notice": "LICENSE-MIT",
+      "sha256": "5e05b024f653a5ce199e77cbbbd42fb5553562ec714b819421ed0c3e552a75d7",
+      "source_url": null,
+      "source_revision": "30002b4228f7cdee309217b6bf6eee099dda0b00"
+    },
+    {
       "package": "syn",
       "version": "2.0.119",
       "notice": "LICENSE-APACHE",
@@ -903,6 +1139,14 @@
       "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
       "source_url": null,
       "source_revision": "7c44a5565b4421035101cc16184e9af08ab5fc77"
+    },
+    {
+      "package": "target-lexicon",
+      "version": "0.13.5",
+      "notice": "LICENSE",
+      "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+      "source_url": null,
+      "source_revision": "6647bd7d681d3e218c88568d8285dfd8cae2dd97"
     },
     {
       "package": "tempfile",

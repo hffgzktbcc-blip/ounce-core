@@ -48,7 +48,7 @@ Build, run the hello fixture, and write an `ounce.run.v1` report: [docs/QUICKSTA
 
 **1. In your browser.** Step through ARM64 code one instruction at a time in the [playground](https://hffgzktbcc-blip.github.io/ounce-core/playground/). Nothing to install.
 
-**2. On your machine.** Download a prebuilt binary from [Releases](https://github.com/hffgzktbcc-blip/ounce-core/releases) or build from source (pure-Rust headless default on Rust 1.89+ with zero C system libraries; pass `--features host-io` only if desktop audio/controller input is wanted, which needs `libasound2-dev libudev-dev` on Debian/Ubuntu; `--workspace` / `--features native-jit` requires current stable Rust):
+**2. On your machine.** Download a prebuilt binary from [Releases](https://github.com/hffgzktbcc-blip/ounce-core/releases) (from the next release, v0.13.0, downloads include all three engines: Interpreter, Tier-3 and Tier-4; v0.12.0 downloads do not include Tier-4) or build from source (pure-Rust headless default on Rust 1.89+ with zero C system libraries; pass `--features host-io` only if desktop audio/controller input is wanted, which needs `libasound2-dev libudev-dev` on Debian/Ubuntu; `--workspace` / `--features native-jit` requires current stable Rust):
 
 ```bash
 cargo install --git https://github.com/hffgzktbcc-blip/ounce-core

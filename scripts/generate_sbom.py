@@ -164,11 +164,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n', 1)[0])
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--target', help='target triple: only dependencies compiled for it are listed')
+    parser.add_argument('--features', help='comma-separated Cargo features the release binary is built with (e.g. native-jit)')
     parser.add_argument('--created', help='creation time (default: the HEAD commit time)')
     args = parser.parse_args(argv)
     command = ['cargo', 'metadata', '--locked', '--format-version', '1']
     if args.target:
         command += ['--filter-platform', args.target]
+    if args.features:
+        command += ['--features', args.features]
     metadata = json.loads(subprocess.run(command, cwd=ROOT, capture_output=True, encoding='utf-8', check=True).stdout)
     doc = build_sbom(metadata, lock_checksums((ROOT / 'Cargo.lock').read_text(encoding='utf-8')),
                      args.created or commit_time(), args.target)

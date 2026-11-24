@@ -63,20 +63,37 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          key: release-${{ matrix.target }}
+          key: release-native-jit-${{ matrix.target }}
+
+      # Release binaries ship all three engines (Interpreter, Tier-3 and Tier-4), so the candidate is built,
+      # tested and smoke-tested with --features native-jit, the same commands as the "Tier-4 native code" CI job.
+      - name: Run recompiler crate tests (W^X buffer, generated code execution)
+        run: cargo test --release --locked --target ${{ matrix.target }} -p ounce-recompiler
 
       - name: Test release candidate
-        run: cargo test --release --locked --target ${{ matrix.target }}
+        run: cargo test --release --locked --features native-jit --target ${{ matrix.target }} -- --nocapture
 
       - name: Run integration verification on release candidate
-        run: cargo run --release --locked --target ${{ matrix.target }} -- test
+        run: cargo run --release --locked --features native-jit --target ${{ matrix.target }} -- test
 
       - name: Build release binary
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --release --locked --features native-jit --target ${{ matrix.target }}
+
+      - name: Smoke-test Tier-4 in the release binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin=target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+          "$bin" jit-selftest
+          out=$("$bin" run-elf tests/linux-elf/bin/hello.elf --cpu=tier4 2>&1)
+          echo "$out"
+          grep -q "hello from aarch64 linux" <<< "$out"
+          grep -q "engine=Tier-4" <<< "$out"
+          if grep -q "Not available" <<< "$out"; then echo "Tier-4 fell back"; exit 1; fi
 
       - name: Generate SBOM (SPDX 2.3)
         shell: bash
-        run: python scripts/generate_sbom.py --target ${{ matrix.target }} --output ounce-core-${{ matrix.target }}.spdx.json
+        run: python scripts/generate_sbom.py --target ${{ matrix.target }} --features native-jit --output ounce-core-${{ matrix.target }}.spdx.json
 
       - name: Retain the actual build toolchain notices
         shell: bash
