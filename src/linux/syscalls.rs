@@ -23,6 +23,7 @@ pub const EFBIG: i64 = 27;
 pub const ENOSPC: i64 = 28;
 pub const ESPIPE: i64 = 29;
 pub const ENAMETOOLONG: i64 = 36;
+pub const ENOSYS: i64 = 38;
 
 pub const SYS_FCNTL: u64 = 25;
 pub const SYS_IOCTL: u64 = 29;
@@ -45,11 +46,13 @@ pub const SYS_EXIT: u64 = 93;
 pub const SYS_EXIT_GROUP: u64 = 94;
 pub const SYS_SET_TID_ADDRESS: u64 = 96;
 pub const SYS_CLOCK_GETTIME: u64 = 113;
+pub const SYS_SCHED_SETAFFINITY: u64 = 122;
 pub const SYS_SCHED_GETAFFINITY: u64 = 123;
 pub const SYS_SCHED_YIELD: u64 = 124;
 pub const SYS_RT_SIGACTION: u64 = 134;
 pub const SYS_RT_SIGPROCMASK: u64 = 135;
 pub const SYS_UNAME: u64 = 160;
+pub const SYS_GETCPU: u64 = 168;
 pub const SYS_GETTIMEOFDAY: u64 = 169;
 pub const SYS_GETPID: u64 = 172;
 pub const SYS_GETPPID: u64 = 173;
@@ -61,8 +64,11 @@ pub const SYS_GETTID: u64 = 178;
 pub const SYS_BRK: u64 = 214;
 pub const SYS_MUNMAP: u64 = 215;
 pub const SYS_MREMAP: u64 = 216;
+pub const SYS_CLONE: u64 = 220;
 pub const SYS_MMAP: u64 = 222;
 pub const SYS_MPROTECT: u64 = 226;
+pub const SYS_CLONE3: u64 = 435;
+pub const CLONE_THREAD: u64 = 0x0001_0000;
 
 const O_ACCMODE: u32 = 0o3;
 const O_RDONLY: u32 = 0;
@@ -171,6 +177,7 @@ pub struct Process {
     dentries: std::collections::BTreeMap<String, u64>,
     next_ino: u64,
     rng: u64,
+    warned_clone_thread: bool,
 }
 
 impl Process {
@@ -261,6 +268,7 @@ impl Process {
             dentries,
             next_ino: 10,
             rng: RNG_SEED,
+            warned_clone_thread: false,
         }
     }
 
@@ -497,8 +505,26 @@ impl Process {
             }
             SYS_CLOCK_GETTIME => self.sys_clock_gettime(a[0], a[1], mmu),
             SYS_UNAME => sys_uname(a[0], mmu),
+            SYS_SCHED_SETAFFINITY => sys_sched_setaffinity(a[0], a[1], a[2], mmu),
             SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(a[0], a[1], a[2], mmu),
-            220 => -38, // ENOSYS
+            SYS_GETCPU => sys_getcpu(a[0], a[1], a[2], mmu),
+            SYS_CLONE | SYS_CLONE3 => {
+                let flags = if nr == SYS_CLONE3 {
+                    // clone3 takes (struct clone_args *uargs, size_t size); flags is the first u64 field.
+                    mmu.read_u64(a[0]).unwrap_or(0)
+                } else {
+                    a[0]
+                };
+                if (flags & CLONE_THREAD) != 0 && !self.warned_clone_thread {
+                    self.warned_clone_thread = true;
+                    let msg = format!(
+                        "[run-elf] guest tried to start a thread (clone flags {:#x}); guest threads are not supported, clone returned ENOSYS\n",
+                        flags
+                    );
+                    out.write(2, msg.as_bytes());
+                }
+                -ENOSYS
+            }
             _ => return Outcome::Unimplemented(describe_unimplemented(nr, &a)),
         };
         Outcome::Return(r)
@@ -1567,6 +1593,26 @@ fn sys_uname(buf: u64, mmu: &mut Memory) -> i64 {
     }
 }
 
+/// Setting affinity on a 1-CPU machine: pid 0 or PID is accepted. The mask must be a multiple of 8
+/// and include CPU 0 (the only online CPU); requesting a mask without CPU 0 returns -EINVAL.
+fn sys_sched_setaffinity(pid: u64, len: u64, mask: u64, mmu: &Memory) -> i64 {
+    if pid != 0 && pid != PID {
+        return -ESRCH;
+    }
+    if len < 8 || !len.is_multiple_of(8) {
+        return -EINVAL;
+    }
+    let mut buf = [0u8; 8];
+    if mmu.read_bytes(mask, &mut buf).is_err() {
+        return -EFAULT;
+    }
+    let mask_val = u64::from_le_bytes(buf);
+    if (mask_val & 1) == 0 {
+        return -EINVAL;
+    }
+    0
+}
+
 /// The guest sees one CPU. Like the kernel, the mask is one `unsigned long` (8 bytes,
 /// CPU 0 set), `len` must hold it and be a multiple of 8, and the return value is the
 /// number of bytes written. musl's `sysconf(_SC_NPROCESSORS_ONLN)` asks this at startup.
@@ -1582,6 +1628,17 @@ fn sys_sched_getaffinity(pid: u64, len: u64, mask: u64, mmu: &mut Memory) -> i64
     } else {
         8
     }
+}
+
+/// Reports CPU 0 and NUMA node 0. tcache is unused in modern Linux.
+fn sys_getcpu(cpu_ptr: u64, node_ptr: u64, _tcache: u64, mmu: &mut Memory) -> i64 {
+    if cpu_ptr != 0 && mmu.write_u32(cpu_ptr, 0).is_err() {
+        return -EFAULT;
+    }
+    if node_ptr != 0 && mmu.write_u32(node_ptr, 0).is_err() {
+        return -EFAULT;
+    }
+    0
 }
 
 pub fn syscall_name(nr: u64) -> Option<&'static str> {
@@ -1608,10 +1665,13 @@ pub fn syscall_name(nr: u64) -> Option<&'static str> {
         99 => "set_robust_list",
         101 => "nanosleep",
         115 => "clock_nanosleep",
+        122 => "sched_setaffinity",
+        123 => "sched_getaffinity",
         124 => "sched_yield",
         129 => "kill",
         131 => "tgkill",
         132 => "sigaltstack",
+        168 => "getcpu",
         169 => "gettimeofday",
         173 => "getppid",
         174 => "getuid",

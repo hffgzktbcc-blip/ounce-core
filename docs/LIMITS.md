@@ -25,7 +25,7 @@ These are verified against the source at `main` (14b3c4d) and the [Big Tech run]
 
 - **No `FEAT_AES`, `FEAT_SHA1` or `FEAT_SHA2`.** Programs that use them stop or skip. In the s2n-bignum run, 13 AES-dependent tests were skipped, not passed.
 - **`AT_HWCAP` is `0x20193`** (FP, ASIMD, PMULL, CRC32, ATOMICS, SHA3). It does not advertise AES, SHA1 or SHA2.
-- **`futex` is not implemented**, and there are no threads or `clone`: run single-threaded guests only.
+- **`futex` is not implemented**, and there are no guest threads (`clone` with thread flags returns `ENOSYS` with a one-time stderr note): run single-threaded guests only. Plain `cargo test` works without `--test-threads=1` because libtest catches the `ENOSYS`/`WouldBlock` failure on thread creation and executes tests sequentially inline on the main thread, while programs that spawn second threads (e.g. `std::thread::spawn`) fail with `WouldBlock` / `EAGAIN`.
 - **Files are a bounded in-memory scratch area**: `/tmp` and `/var/tmp` (at most 64 files and 64 open descriptors, 16 MiB per file, 64 MiB in total), plus `/dev/null` and `/proc/self/auxv`. Other paths fail with `ENOENT`. Nothing reaches the host file system. Guest `getrandom` is a fixed stream, so a program that needs real entropy sees the same bytes every run.
 - **Standard input is empty** unless you pass `--stdin` or `--stdin=<path>` (64 MiB limit).
 - **Static, non-PIE only.** `ET_DYN` and static-PIE are rejected.
