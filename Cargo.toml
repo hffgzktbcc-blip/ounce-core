@@ -1,6 +1,6 @@
 [package]
 name = "ounce-core"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2024"
 # Default features support Rust 1.89+; --workspace / --features native-jit requires current stable Rust.
 rust-version = "1.89"
