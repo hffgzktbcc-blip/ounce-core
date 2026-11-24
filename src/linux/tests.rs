@@ -336,19 +336,48 @@ fn getcpu_reports_cpu_zero_and_node_zero() {
 }
 
 #[test]
-fn clone_and_clone3_return_enosys() {
-    use super::syscalls::{ENOSYS, Outcome, Process, SYS_CLONE, SYS_CLONE3};
-    use crate::mmu::Memory;
+fn clone_and_clone3_return_enosys_and_emit_one_time_thread_warning() {
+    use super::syscalls::{CLONE_THREAD, ENOSYS, Outcome, Process, SYS_CLONE, SYS_CLONE3};
+    use crate::mmu::{Memory, Permission};
     let mut proc = Process::new(0x1000);
     let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
     let mut out = Capture::default();
+
+    // First clone call with CLONE_THREAD writes one-time warning to stderr (fd 2).
+    let flags = 0x7d0f00; // musl pthread_create flags (includes CLONE_THREAD 0x10000)
     assert_eq!(
-        proc.dispatch(SYS_CLONE, [0x7d0f00, 0x2000, 0, 0, 0, 0], &mut mem, &mut out),
+        proc.dispatch(SYS_CLONE, [flags, 0x2000, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOSYS)
+    );
+    let expected_msg = format!(
+        "[run-elf] guest tried to start a thread (clone flags {:#x}); guest threads are not supported, clone returned ENOSYS\n",
+        flags
+    );
+    assert_eq!(String::from_utf8_lossy(&out.err), expected_msg);
+    assert!(out.out.is_empty(), "stdout must remain clean");
+
+    // Second clone call with thread flags returns -ENOSYS but emits no further warning.
+    assert_eq!(
+        proc.dispatch(SYS_CLONE, [flags, 0x2000, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(-ENOSYS)
     );
     assert_eq!(
+        String::from_utf8_lossy(&out.err),
+        expected_msg,
+        "stderr should not duplicate the warning"
+    );
+
+    // clone3 also returns -ENOSYS
+    mem.write_u64(0x1000, CLONE_THREAD).unwrap();
+    assert_eq!(
         proc.dispatch(SYS_CLONE3, [0x1000, 88, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(-ENOSYS)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.err),
+        expected_msg,
+        "already warned, no new warning from clone3"
     );
 }
 

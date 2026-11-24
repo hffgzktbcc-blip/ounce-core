@@ -86,7 +86,7 @@ RUSTFLAGS="-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=
   cargo test --target aarch64-unknown-linux-musl
 ```
 
-`--test-threads=1` is not required: `sched_getaffinity` reports a 1-CPU machine, so libtest's default thread count (`std::thread::available_parallelism()`) executes tests sequentially inline on the main thread (and `--test-threads=1` continues to work). The result below is from a three-test library crate on an Apple M3 Mac (Rust 1.98, `ounce-core` built from `main` on Tier-3):
+`--test-threads=1` is not required: libtest tries to spawn a thread per test, `ounce-core` refuses `clone` thread flags with `ENOSYS` (emitting a one-time note on stderr), and musl translates the error to `WouldBlock`, which libtest catches to execute tests sequentially inline on the main thread (and `--test-threads=1` continues to work). `sched_getaffinity`, `sched_setaffinity`, and `getcpu` complete honest 1-CPU scheduling. The result below is from a three-test library crate on an Apple M3 Mac (Rust 1.98, `ounce-core` built from `main` on Tier-3):
 
 ```text
 running 3 tests

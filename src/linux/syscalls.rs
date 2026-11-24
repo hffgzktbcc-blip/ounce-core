@@ -68,6 +68,7 @@ pub const SYS_CLONE: u64 = 220;
 pub const SYS_MMAP: u64 = 222;
 pub const SYS_MPROTECT: u64 = 226;
 pub const SYS_CLONE3: u64 = 435;
+pub const CLONE_THREAD: u64 = 0x0001_0000;
 
 const O_ACCMODE: u32 = 0o3;
 const O_RDONLY: u32 = 0;
@@ -176,6 +177,7 @@ pub struct Process {
     dentries: std::collections::BTreeMap<String, u64>,
     next_ino: u64,
     rng: u64,
+    warned_clone_thread: bool,
 }
 
 impl Process {
@@ -266,6 +268,7 @@ impl Process {
             dentries,
             next_ino: 10,
             rng: RNG_SEED,
+            warned_clone_thread: false,
         }
     }
 
@@ -505,7 +508,23 @@ impl Process {
             SYS_SCHED_SETAFFINITY => sys_sched_setaffinity(a[0], a[1], a[2], mmu),
             SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(a[0], a[1], a[2], mmu),
             SYS_GETCPU => sys_getcpu(a[0], a[1], a[2], mmu),
-            SYS_CLONE | SYS_CLONE3 => -ENOSYS,
+            SYS_CLONE | SYS_CLONE3 => {
+                let flags = if nr == SYS_CLONE3 {
+                    // clone3 takes (struct clone_args *uargs, size_t size); flags is the first u64 field.
+                    mmu.read_u64(a[0]).unwrap_or(0)
+                } else {
+                    a[0]
+                };
+                if (flags & CLONE_THREAD) != 0 && !self.warned_clone_thread {
+                    self.warned_clone_thread = true;
+                    let msg = format!(
+                        "[run-elf] guest tried to start a thread (clone flags {:#x}); guest threads are not supported, clone returned ENOSYS\n",
+                        flags
+                    );
+                    out.write(2, msg.as_bytes());
+                }
+                -ENOSYS
+            }
             _ => return Outcome::Unimplemented(describe_unimplemented(nr, &a)),
         };
         Outcome::Return(r)
