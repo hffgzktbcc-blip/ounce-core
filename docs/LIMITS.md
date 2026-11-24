@@ -21,7 +21,7 @@ per-harness README, the README wins.
 
 ## Known gaps in what the Linux ELF runner and CPU models execute (24 Nov 2026)
 
-These are verified against the source at `main` (18cf538, v0.12.0) and the [Big Tech run](verify/bigtech-2026-11-23.md):
+These are verified against the source at `main` (dbbb28d) plus the Unreleased changes and the [Big Tech run](verify/bigtech-2026-11-23.md):
 
 - **`AT_HWCAP` is `0x2201fb`** (FP, ASIMD, AES, PMULL, SHA1, SHA2, CRC32, ATOMICS, SHA3, SHA512). `FEAT_AES`, `FEAT_SHA1`, `FEAT_SHA2` and `FEAT_SHA512` execute on every engine and match an Apple M3 bit for bit on the inputs listed in the [changelog](../CHANGELOG.md); `FEAT_SM3` and `FEAT_SM4` are not implemented.
 - **`futex` is not implemented**, and there are no guest threads (`clone` with thread flags returns `ENOSYS` with a one-time stderr note): run single-threaded guests only. Plain `cargo test` works without `--test-threads=1` because libtest catches the `ENOSYS`/`WouldBlock` failure on thread creation and executes tests sequentially inline on the main thread, while programs that spawn second threads (e.g. `std::thread::spawn`) fail with `WouldBlock` / `EAGAIN`.

@@ -26,7 +26,7 @@ pub fn decode(raw: u32) -> Instruction {
             op,
         };
     }
-    if let Some((op, rd, rn, rm)) = super::crypto::decode(raw) {
+    if let Some((op, rd, rn, rm)) = super::simd_crypto::decode(raw) {
         return Instruction::Crypto { rd, rn, rm, op };
     }
     // 1. NOP / HINT / Barrier / Cache Maintenance check:

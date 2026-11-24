@@ -1,5 +1,4 @@
 #![allow(unused_imports)]
-pub mod crypto;
 pub mod decoder;
 pub mod engine;
 pub mod instructions;
@@ -10,6 +9,7 @@ pub mod nce;
 pub mod pauth;
 pub mod registers;
 pub mod simd;
+pub mod simd_crypto;
 pub mod softfp;
 pub mod tier2_jit;
 pub mod tier3_jit;

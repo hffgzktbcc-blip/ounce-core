@@ -1,8 +1,8 @@
 //! FEAT_AES / SHA1 / SHA2 / SHA512: decoding, hardware known answers, and execution through every software tier.
 //! `HW_VECTORS` were produced on an Apple M3 by the matching `arm_neon.h` intrinsics, so they are hardware results, not
 //! results of this implementation.
-use super::crypto;
 use super::instructions::CryptoOp;
+use super::simd_crypto;
 use super::*;
 use crate::mmu::{Memory, Permission};
 
@@ -1596,7 +1596,7 @@ fn crypto_decode() {
 fn crypto_matches_hardware_vectors_directly() {
     for &(op, d, n, m, want) in HW_VECTORS {
         assert_eq!(
-            crypto::execute(op, d, n, m),
+            simd_crypto::execute(op, d, n, m),
             want,
             "{op:?} d={d:032x} n={n:032x} m={m:032x}"
         );
@@ -1606,16 +1606,16 @@ fn crypto_matches_hardware_vectors_directly() {
 #[test]
 fn sbox_known_values() {
     // FIPS-197 figure 7: S(00)=63, S(01)=7c, S(53)=ed, S(ff)=16; inverse S(63)=00.
-    let sub = |b: u8| crypto::aese(0, u128::from(b)).to_le_bytes()[0];
+    let sub = |b: u8| simd_crypto::aese(0, u128::from(b)).to_le_bytes()[0];
     assert_eq!([sub(0), sub(1), sub(0x53), sub(0xff)], [0x63, 0x7c, 0xed, 0x16]);
-    assert_eq!(crypto::aesd(0, u128::from(0x63u8)).to_le_bytes()[0], 0x00);
+    assert_eq!(simd_crypto::aesd(0, u128::from(0x63u8)).to_le_bytes()[0], 0x00);
     // FIPS-197 section 5.1.3 MixColumns example column db 13 53 45 -> 8e 4d a1 bc.
     let col = u128::from_le_bytes([0xdb, 0x13, 0x53, 0x45, 0xf2, 0x0a, 0x22, 0x5c, 1, 1, 1, 1, 0, 0, 0, 0]);
     assert_eq!(
-        &crypto::aesmc(col).to_le_bytes()[..8],
+        &simd_crypto::aesmc(col).to_le_bytes()[..8],
         &[0x8e, 0x4d, 0xa1, 0xbc, 0x9f, 0xdc, 0x58, 0x9d]
     );
-    assert_eq!(crypto::aesimc(crypto::aesmc(col)), col);
+    assert_eq!(simd_crypto::aesimc(simd_crypto::aesmc(col)), col);
 }
 
 fn run(raw: u32, tier: u8, regs: &[(u8, u128)], check: u8, want: u128) {
@@ -1696,7 +1696,7 @@ fn crypto_hardware_vectors_all_tiers_and_register_aliases() {
                 let expected = if (rd, rn, rm) == (0, 1, 2) || (rd, rn, rm) == (31, 30, 29) {
                     want
                 } else {
-                    crypto::execute(op, dv, nv, mv)
+                    simd_crypto::execute(op, dv, nv, mv)
                 };
                 run(encode(op, rd, rn, rm), tier, &regs, rd as u8, expected);
             }
@@ -1704,7 +1704,7 @@ fn crypto_hardware_vectors_all_tiers_and_register_aliases() {
     }
 }
 
-/// `FMOV Xd, Vn.D[1]` and `FMOV Vd.D[1], Xn` (used by s2n-bignum's AES-XTS) were undecoded.
+/// `FMOV Xd, Vn.D[1]` and `FMOV Vd.D[1], Xn` were undecoded.
 #[test]
 fn fmov_top_half_all_tiers() {
     let v = 0x1122334455667788_99aabbccddeeff00u128;
