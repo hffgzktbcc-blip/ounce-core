@@ -83,12 +83,10 @@ static, non-PIE layout:
 
 ```sh
 RUSTFLAGS="-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=static" \
-  cargo test --target aarch64-unknown-linux-musl -- --test-threads=1
+  cargo test --target aarch64-unknown-linux-musl
 ```
 
-`--test-threads=1` is needed because the runner executes single-threaded guests only (no
-`futex`, no `clone`). The result below is from a three-test library crate on an Apple M3 Mac
-(Rust 1.98, `ounce-core` built from `main` at `14b3c4d`); the tests ran on the Tier-3 engine:
+`--test-threads=1` is not required: `sched_getaffinity` reports a 1-CPU machine, so libtest's default thread count (`std::thread::available_parallelism()`) executes tests sequentially inline on the main thread (and `--test-threads=1` continues to work). The result below is from a three-test library crate on an Apple M3 Mac (Rust 1.98, `ounce-core` built from `main` on Tier-3):
 
 ```text
 running 3 tests

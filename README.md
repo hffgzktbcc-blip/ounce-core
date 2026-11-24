@@ -73,10 +73,10 @@ On macOS the default link flags fail, and `ounce-core` rejects static-PIE, so bu
 ```sh
 rustup target add aarch64-unknown-linux-musl
 RUSTFLAGS="-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=static" \
-  cargo test --target aarch64-unknown-linux-musl -- --test-threads=1
+  cargo test --target aarch64-unknown-linux-musl
 ```
 
-Guests must be single-threaded (`futex` is not implemented), hence `--test-threads=1`. A three-test crate passed this way on an Apple M3; the exact output is in the [Quick Start](docs/QUICKSTART.md#cargo-test-for-aarch64-linux-musl-through-ounce-core). Other crates may stop on unsupported instructions or syscalls ([limits](docs/LIMITS.md)).
+Plain `cargo test` runs without `--test-threads=1`: `sched_getaffinity` reports a 1-CPU machine, so libtest's default thread count (`available_parallelism()`) executes tests sequentially without requiring manual flags (and `--test-threads=1` continues to work). A three-test crate passed this way on an Apple M3; the exact output is in the [Quick Start](docs/QUICKSTART.md#cargo-test-for-aarch64-linux-musl-through-ounce-core). Programs that require second threads fail with `WouldBlock` (`clone` threads and `futex` are not implemented; see [limits](docs/LIMITS.md)).
 
 **3. Help out.** Have an ARM64 Mac or Linux machine, plus devkitPro/devkitA64? Follow the [independent rerun instructions](docs/REPRODUCE.md): the differential test needs `--nro` (or valid `--nro-dir` inputs) to actually compare guest engines. **Without guest binaries it can report skipped engine checks**, not a reproduction. Share matching, failing and blocked results in [issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248). No ARM64 machine? Try a [browser-only task](docs/community/TRY_THIS_WEEK.md) or a [good first issue](https://github.com/hffgzktbcc-blip/ounce-core/contribute). Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 

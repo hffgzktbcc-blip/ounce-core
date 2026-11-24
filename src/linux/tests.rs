@@ -281,6 +281,100 @@ fn sched_getaffinity_reports_one_cpu_and_validates_like_linux() {
 }
 
 #[test]
+fn sched_setaffinity_validates_and_accepts_cpu_zero() {
+    use super::syscalls::{EFAULT, EINVAL, ESRCH, Outcome, PID, Process, SYS_SCHED_SETAFFINITY};
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    let mut call = |pid, len, mask, mem: &mut Memory| {
+        proc.dispatch(SYS_SCHED_SETAFFINITY, [pid, len, mask, 0, 0, 0], mem, &mut out)
+    };
+    // Setting CPU 0 succeeds (mask = 1).
+    mem.write_u64(0x1000, 1).unwrap();
+    assert_eq!(call(0, 8, 0x1000, &mut mem), Outcome::Return(0));
+    assert_eq!(call(PID, 128, 0x1000, &mut mem), Outcome::Return(0));
+    // Setting mask with CPU 0 + other bits also includes CPU 0 and succeeds.
+    mem.write_u64(0x1000, 3).unwrap();
+    assert_eq!(call(0, 8, 0x1000, &mut mem), Outcome::Return(0));
+    // Mask without CPU 0 fails with EINVAL (no allowed CPU requested).
+    mem.write_u64(0x1000, 2).unwrap();
+    assert_eq!(call(0, 8, 0x1000, &mut mem), Outcome::Return(-EINVAL));
+    mem.write_u64(0x1000, 0).unwrap();
+    assert_eq!(call(0, 8, 0x1000, &mut mem), Outcome::Return(-EINVAL));
+    // Invalid length or pid.
+    assert_eq!(call(0, 4, 0x1000, &mut mem), Outcome::Return(-EINVAL));
+    assert_eq!(call(0, 12, 0x1000, &mut mem), Outcome::Return(-EINVAL));
+    assert_eq!(call(PID + 1, 8, 0x1000, &mut mem), Outcome::Return(-ESRCH));
+    // Invalid pointer.
+    assert_eq!(call(0, 8, 0, &mut mem), Outcome::Return(-EFAULT));
+}
+
+#[test]
+fn getcpu_reports_cpu_zero_and_node_zero() {
+    use super::syscalls::{EFAULT, Outcome, Process, SYS_GETCPU};
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    let mut call =
+        |cpu, node, tcache, mem: &mut Memory| proc.dispatch(SYS_GETCPU, [cpu, node, tcache, 0, 0, 0], mem, &mut out);
+    mem.write_u32(0x1000, 0xdead_beef).unwrap();
+    mem.write_u32(0x1004, 0xbadc_0ffe).unwrap();
+    assert_eq!(call(0x1000, 0x1004, 0, &mut mem), Outcome::Return(0));
+    assert_eq!(mem.read_u32(0x1000).unwrap(), 0);
+    assert_eq!(mem.read_u32(0x1004).unwrap(), 0);
+    // Null pointers are permitted and ignored.
+    assert_eq!(call(0, 0, 0, &mut mem), Outcome::Return(0));
+    assert_eq!(call(0x1000, 0, 0, &mut mem), Outcome::Return(0));
+    assert_eq!(call(0, 0x1004, 0, &mut mem), Outcome::Return(0));
+    // Unmapped pointer fails with EFAULT.
+    assert_eq!(call(0x9000, 0, 0, &mut mem), Outcome::Return(-EFAULT));
+    assert_eq!(call(0, 0x9000, 0, &mut mem), Outcome::Return(-EFAULT));
+}
+
+#[test]
+fn clone_and_clone3_return_enosys() {
+    use super::syscalls::{ENOSYS, Outcome, Process, SYS_CLONE, SYS_CLONE3};
+    use crate::mmu::Memory;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    let mut out = Capture::default();
+    assert_eq!(
+        proc.dispatch(SYS_CLONE, [0x7d0f00, 0x2000, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOSYS)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_CLONE3, [0x1000, 88, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOSYS)
+    );
+}
+
+#[test]
+fn single_cpu_and_clone_syscalls_execute_across_all_tiers() {
+    // AArch64 machine code that exercises:
+    // 1. sched_getaffinity(0, 8, sp) -> returns 8, writes mask 1
+    // 2. sched_setaffinity(0, 8, sp) -> returns 0
+    // 3. getcpu(sp, sp + 4, 0) -> returns 0, writes cpu 0 and node 0
+    // 4. clone(CLONE_THREAD | ..., 0, 0, 0, 0) -> returns -38 (ENOSYS)
+    // 5. exit 0 (or exit 42 on any failure)
+    let code: [u32; 42] = [
+        0xd2800f68, 0xd2800000, 0xd2800101, 0x910003e2, 0xd4000001, 0xf100201f, 0x54000421, 0xf94003e3, 0xf100047f,
+        0x540003c1, 0xd2800f48, 0xd2800000, 0xd2800101, 0x910003e2, 0xd4000001, 0xb5000300, 0xd2801508, 0x910003e0,
+        0x910013e1, 0xd2800002, 0xd4000001, 0xb5000240, 0xb94003e4, 0x35000204, 0xb94007e5, 0x350001c5, 0xd2801b88,
+        0xd2a00020, 0xd2800001, 0xd2800002, 0xd2800003, 0xd2800004, 0xd2800005, 0xd4000001, 0xb100981f, 0x54000081,
+        0xd2800ba8, 0xd2800000, 0xd4000001, 0xd2800ba8, 0xd2800540, 0xd4000001,
+    ];
+    let elf = tiny_elf(&code);
+    for tier in TIERS {
+        let (r, _) = go(&elf, &["affinity_test"], tier);
+        assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: expected clean exit 0, got {r:?}");
+    }
+}
+
+#[test]
 fn mremap_shrinks_in_place_and_grows_by_moving_with_contents() {
     use super::syscalls::{EINVAL, ENOMEM, Outcome, Process, SYS_MMAP, SYS_MREMAP};
     use crate::mmu::Memory;
