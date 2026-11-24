@@ -83,12 +83,10 @@ static, non-PIE layout:
 
 ```sh
 RUSTFLAGS="-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=static" \
-  cargo test --target aarch64-unknown-linux-musl -- --test-threads=1
+  cargo test --target aarch64-unknown-linux-musl
 ```
 
-`--test-threads=1` is needed because the runner executes single-threaded guests only (no
-`futex`, no `clone`). The result below is from a three-test library crate on an Apple M3 Mac
-(Rust 1.98, `ounce-core` built from `main` at `14b3c4d`); the tests ran on the Tier-3 engine:
+`--test-threads=1` is not required: libtest tries to spawn a thread per test, `ounce-core` refuses `clone` thread flags with `ENOSYS` (emitting a one-time note on stderr), and musl translates the error to `WouldBlock`, which libtest catches to execute tests sequentially inline on the main thread (and `--test-threads=1` continues to work). `sched_getaffinity`, `sched_setaffinity`, and `getcpu` complete honest 1-CPU scheduling. The result below is from a three-test library crate on an Apple M3 Mac (Rust 1.98, `ounce-core` built from `main` on Tier-3):
 
 ```text
 running 3 tests
@@ -102,7 +100,7 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 This shows that small test binaries run; it does not show that every crate's tests do. Tests
-that spawn threads or need other unsupported instructions or system
+that spawn threads or need AES (`FEAT_AES` is not implemented) or other unsupported system
 calls stop with a diagnosis ([limits](LIMITS.md)).
 
 ## Where the other tools live

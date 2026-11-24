@@ -9,7 +9,6 @@ pub mod nce;
 pub mod pauth;
 pub mod registers;
 pub mod simd;
-pub mod simd_crypto;
 pub mod softfp;
 pub mod tier2_jit;
 pub mod tier3_jit;
@@ -37,6 +36,3 @@ mod rcpc2_tests;
 
 #[cfg(test)]
 mod sha3_tests;
-
-#[cfg(test)]
-mod crypto_tests;

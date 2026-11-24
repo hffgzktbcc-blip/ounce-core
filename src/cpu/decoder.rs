@@ -26,9 +26,6 @@ pub fn decode(raw: u32) -> Instruction {
             op,
         };
     }
-    if let Some((op, rd, rn, rm)) = super::simd_crypto::decode(raw) {
-        return Instruction::Crypto { rd, rn, rm, op };
-    }
     // 1. NOP / HINT / Barrier / Cache Maintenance check:
     //    0xD503201F (NOP), 0xD503245F (BTI c, checked by `Cpu::step` from the raw word), DSB/DMB/ISB (0xD5033xxx), DC/IC (0xD5087xxx / 0xD50B7xxx)
     // DC ZVA, Xt zeroes a cache-line-sized block, so it is not a no-op like the other cache operations.
@@ -975,15 +972,6 @@ pub fn decode(raw: u32) -> Instruction {
         let rn = ((raw >> 5) & 0x1F) as u8;
         let rd = (raw & 0x1F) as u8;
         return Instruction::FpMovGen { rd, rn, to_fp, is_64 };
-    }
-
-    // 19t. FMOV Xd, Vn.D[1] (0x9EAE0000) / FMOV Vd.D[1], Xn (0x9EAF0000)
-    if (raw & 0xFFFF_FC00) == 0x9EAE_0000 || (raw & 0xFFFF_FC00) == 0x9EAF_0000 {
-        return Instruction::FpMovTopHalf {
-            rd: (raw & 0x1F) as u8,
-            rn: ((raw >> 5) & 0x1F) as u8,
-            to_fp: (raw >> 16) & 1 != 0,
-        };
     }
 
     // 19h. FMOV Hd, Wn/Xn and FMOV Wd/Xd, Hn (FEAT_FP16): sf 0 0 11110 11 1 00 11x 000000 Rn Rd (ftype 3, rmode 0)

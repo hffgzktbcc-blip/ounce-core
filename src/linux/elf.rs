@@ -38,24 +38,11 @@ const AT_EXECFN: u64 = 31;
 
 pub const HWCAP_FP: u64 = 1 << 0;
 pub const HWCAP_ASIMD: u64 = 1 << 1;
-pub const HWCAP_AES: u64 = 1 << 3;
 pub const HWCAP_PMULL: u64 = 1 << 4;
-pub const HWCAP_SHA1: u64 = 1 << 5;
-pub const HWCAP_SHA2: u64 = 1 << 6;
 pub const HWCAP_CRC32: u64 = 1 << 7;
 pub const HWCAP_ATOMICS: u64 = 1 << 8;
 pub const HWCAP_SHA3: u64 = 1 << 17;
-pub const HWCAP_SHA512: u64 = 1 << 21;
-pub const HWCAP_VALUE: u64 = HWCAP_FP
-    | HWCAP_ASIMD
-    | HWCAP_AES
-    | HWCAP_PMULL
-    | HWCAP_SHA1
-    | HWCAP_SHA2
-    | HWCAP_CRC32
-    | HWCAP_ATOMICS
-    | HWCAP_SHA3
-    | HWCAP_SHA512;
+pub const HWCAP_VALUE: u64 = HWCAP_FP | HWCAP_ASIMD | HWCAP_PMULL | HWCAP_CRC32 | HWCAP_ATOMICS | HWCAP_SHA3;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ElfError {
