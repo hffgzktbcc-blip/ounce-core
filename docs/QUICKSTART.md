@@ -32,7 +32,7 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture \
 ```
 
 `run.json` is `ounce.run.v1` (pass `--report-json=-` to emit pure JSON to stdout while routing diagnostics to stderr). Guest text stays on stdout and is flushed as the
-guest writes it, so a hung program's output shows before a timeout stops it. The same path can be
+guest writes it (with `--report-json=-` the guest's stdout and stderr both go to stderr, so stdout is only the JSON), so a hung program's output shows before a timeout stops it. The same path can be
 given as `OUNCE_REPORT_JSON`. `run`, `run-nro` and `run-elf` write the file.
 
 `--audio=null` (or `OUNCE_AUDIO=null`) does not open a host audio device.

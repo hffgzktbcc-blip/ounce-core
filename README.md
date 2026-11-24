@@ -57,7 +57,7 @@ ounce-core run-elf path/to/program.elf --present=headless --report-json=-
 cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture
 ```
 
-`run-elf` executes a static Linux ARM64 ELF and emits pure `ounce.run.v1` JSON to `stdout` (diagnostics on `stderr`) with `--report-json=-`; the `hello.nro` fixture prints `result=0x00000EEE`. The default engine is Tier-3 (`--report-json=run.json` or `OUNCE_REPORT_JSON` also writes to a file). To run your Rust tests on aarch64 Linux through Ounce-Core, see [`cargo test` as a runner](#run-cargo-test-through-ounce-core) below. To check your own program against a host build, see [Add a program](docs/ADD_A_PROGRAM.md) or the [Community Verification Guide](docs/COMMUNITY_VERIFICATION_GUIDE.md). To find where a run first goes wrong, see the [diagnosis guide](docs/DIAGNOSIS_CLI.md).
+`run-elf` executes a static Linux ARM64 ELF and emits pure `ounce.run.v1` JSON to `stdout` (diagnostics and the guest's own output on `stderr`) with `--report-json=-`; the `hello.nro` fixture prints `result=0x00000EEE`. The default engine is Tier-3 (`--report-json=run.json` or `OUNCE_REPORT_JSON` also writes to a file). To run your Rust tests on aarch64 Linux through Ounce-Core, see [`cargo test` as a runner](#run-cargo-test-through-ounce-core) below. To check your own program against a host build, see [Add a program](docs/ADD_A_PROGRAM.md) or the [Community Verification Guide](docs/COMMUNITY_VERIFICATION_GUIDE.md). To find where a run first goes wrong, see the [diagnosis guide](docs/DIAGNOSIS_CLI.md).
 
 ### Run `cargo test` through Ounce-Core
 
