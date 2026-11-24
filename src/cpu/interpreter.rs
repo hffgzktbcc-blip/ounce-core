@@ -1575,6 +1575,17 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::FpMovTopHalf { rd, rn, to_fp } => {
+                if to_fp {
+                    let low = self.regs.read_q(rd) & u128::from(u64::MAX);
+                    self.regs.write_q(rd, low | (u128::from(self.regs.read_x(rn)) << 64));
+                } else {
+                    self.regs.write_x(rd, (self.regs.read_q(rn) >> 64) as u64);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::FpMovGenHalf { rd, rn, to_fp, is_64 } => {
                 // a bit-pattern move of the low 16 bits; everything above them in the destination is zero
                 if to_fp {
