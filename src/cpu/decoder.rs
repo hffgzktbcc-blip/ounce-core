@@ -977,6 +977,15 @@ pub fn decode(raw: u32) -> Instruction {
         return Instruction::FpMovGen { rd, rn, to_fp, is_64 };
     }
 
+    // 19t. FMOV Xd, Vn.D[1] (0x9EAE0000) / FMOV Vd.D[1], Xn (0x9EAF0000)
+    if (raw & 0xFFFF_FC00) == 0x9EAE_0000 || (raw & 0xFFFF_FC00) == 0x9EAF_0000 {
+        return Instruction::FpMovTopHalf {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            to_fp: (raw >> 16) & 1 != 0,
+        };
+    }
+
     // 19h. FMOV Hd, Wn/Xn and FMOV Wd/Xd, Hn (FEAT_FP16): sf 0 0 11110 11 1 00 11x 000000 Rn Rd (ftype 3, rmode 0)
     if (raw & 0x7FFE_FC00) == 0x1EE6_0000 {
         return Instruction::FpMovGenHalf {

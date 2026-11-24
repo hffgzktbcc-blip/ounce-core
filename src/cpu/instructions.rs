@@ -336,6 +336,10 @@ pub enum Instruction {
     /// Floating-Point / GP Register Transfer: `FMOV Dd, Xn`, `FMOV Xd, Dn`, etc.
     FpMovGen { rd: u8, rn: u8, to_fp: bool, is_64: bool },
 
+    /// `FMOV Xd, Vn.D[1]` (`to_fp` false) and `FMOV Vd.D[1], Xn` (`to_fp` true): move the top 64 bits of a vector
+    /// register; the write form keeps the low 64 bits of `Vd`.
+    FpMovTopHalf { rd: u8, rn: u8, to_fp: bool },
+
     /// `FMOV Hd, Wn/Xn` and `FMOV Wd/Xd, Hn` (FEAT_FP16): the low 16 bits move as a bit pattern; the rest of the
     /// destination is zero.
     FpMovGenHalf { rd: u8, rn: u8, to_fp: bool, is_64: bool },
