@@ -2758,6 +2758,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Crypto { rd, rn, rm, op } => {
+                let r = super::crypto::execute(op, self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, r);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdThreeSame {
                 rd,
                 rn,

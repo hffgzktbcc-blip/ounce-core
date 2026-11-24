@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+pub mod crypto;
 pub mod decoder;
 pub mod engine;
 pub mod instructions;
@@ -36,3 +37,6 @@ mod rcpc2_tests;
 
 #[cfg(test)]
 mod sha3_tests;
+
+#[cfg(test)]
+mod crypto_tests;

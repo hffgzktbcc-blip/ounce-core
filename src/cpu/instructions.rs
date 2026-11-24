@@ -677,6 +677,9 @@ pub enum Instruction {
     /// FEAT_SHA3 bitwise operations; `ra` is used only by EOR3/BCAX.
     Sha3 { rd: u8, rn: u8, rm: u8, ra: u8, op: Sha3Op },
 
+    /// FEAT_AES, FEAT_SHA1, FEAT_SHA2 and FEAT_SHA512 vector instructions; `rm` is used only by the three-register forms.
+    Crypto { rd: u8, rn: u8, rm: u8, op: CryptoOp },
+
     /// AdvSIMD three registers of the same type (integer and bitwise)
     SimdThreeSame {
         rd: u8,
@@ -1292,6 +1295,29 @@ pub enum SimdSatAddSubOp {
     Uqadd,
     Sqsub,
     Uqsub,
+}
+
+/// The operation of a FEAT_AES / FEAT_SHA1 / FEAT_SHA2 / FEAT_SHA512 instruction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CryptoOp {
+    Aese,
+    Aesd,
+    Aesmc,
+    Aesimc,
+    Sha1c,
+    Sha1p,
+    Sha1m,
+    Sha1h,
+    Sha1su0,
+    Sha1su1,
+    Sha256h,
+    Sha256h2,
+    Sha256su0,
+    Sha256su1,
+    Sha512h,
+    Sha512h2,
+    Sha512su0,
+    Sha512su1,
 }
 
 /// FEAT_SHA3 operations on a full 128-bit vector or independent 64-bit lanes.
