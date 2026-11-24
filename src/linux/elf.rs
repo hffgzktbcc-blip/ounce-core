@@ -36,6 +36,13 @@ const AT_SECURE: u64 = 23;
 const AT_RANDOM: u64 = 25;
 const AT_EXECFN: u64 = 31;
 
+pub const HWCAP_FP: u64 = 1 << 0;
+pub const HWCAP_ASIMD: u64 = 1 << 1;
+pub const HWCAP_PMULL: u64 = 1 << 4;
+pub const HWCAP_CRC32: u64 = 1 << 7;
+pub const HWCAP_SHA3: u64 = 1 << 17;
+pub const HWCAP_VALUE: u64 = HWCAP_FP | HWCAP_ASIMD | HWCAP_PMULL | HWCAP_CRC32 | HWCAP_SHA3;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ElfError {
     #[error("not an ELF file (bad magic or file too short)")]
@@ -409,6 +416,7 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
 }
 
 /// Maps the stack and builds argc/argv/envp/auxv. Returns the initial `sp` (16-byte aligned).
+#[allow(dead_code)]
 pub fn build_stack(
     mmu: &mut Memory,
     image: &Image,
@@ -416,6 +424,17 @@ pub fn build_stack(
     envp: &[String],
     execfn: &str,
 ) -> Result<u64, ElfError> {
+    build_stack_with_auxv(mmu, image, argv, envp, execfn).map(|(sp, _)| sp)
+}
+
+/// Maps the stack and builds argc/argv/envp/auxv. Returns the initial `sp` and serialized `auxv` bytes.
+pub fn build_stack_with_auxv(
+    mmu: &mut Memory,
+    image: &Image,
+    argv: &[String],
+    envp: &[String],
+    execfn: &str,
+) -> Result<(u64, Vec<u8>), ElfError> {
     mmu.map_range(STACK_TOP - STACK_SIZE, STACK_SIZE as usize, Permission::READ_WRITE);
     let mut sp = STACK_TOP - 16;
     let push_bytes = |mmu: &mut Memory, sp: &mut u64, data: &[u8]| -> Result<u64, ElfError> {
@@ -453,7 +472,7 @@ pub fn build_stack(
         (AT_EUID, 1000),
         (AT_GID, 1000),
         (AT_EGID, 1000),
-        (AT_HWCAP, 0x3), // HWCAP_FP | HWCAP_ASIMD
+        (AT_HWCAP, HWCAP_VALUE),
         (AT_CLKTCK, 100),
         (AT_SECURE, 0),
         (AT_RANDOM, random_p),
@@ -461,6 +480,11 @@ pub fn build_stack(
         (AT_EXECFN, execfn_p),
         (AT_NULL, 0),
     ];
+    let mut auxv_bytes = Vec::with_capacity(auxv.len() * 16);
+    for (k, v) in &auxv {
+        auxv_bytes.extend_from_slice(&k.to_le_bytes());
+        auxv_bytes.extend_from_slice(&v.to_le_bytes());
+    }
     let mut words: Vec<u64> = vec![argv.len() as u64];
     words.extend(&arg_ptrs);
     words.push(0);
@@ -476,5 +500,5 @@ pub fn build_stack(
         mmu.write_u64(new_sp + i as u64 * 8, *w)
             .map_err(|e| ElfError::Malformed(format!("stack write: {e}")))?;
     }
-    Ok(new_sp)
+    Ok((new_sp, auxv_bytes))
 }

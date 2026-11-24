@@ -8,4 +8,6 @@ licenses/*.txt text eol=lf
 docs/verify/insn-fuzzer/default-nan-mul2d/** text eol=lf
 
 conformance/** text eol=lf
+# Native known-answer output compared byte for byte by src/linux/tests.rs.
+tests/linux-elf/*.expected text eol=lf
 scripts/*.sh text eol=lf

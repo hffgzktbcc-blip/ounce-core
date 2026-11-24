@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp, ShiftType,
-    SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftOp,
+    AtomicOp, BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp,
+    ShiftType, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftOp,
 };
 use super::pauth::{self, PointerAuth};
 use super::simd;
@@ -978,13 +978,25 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpData2 {
-                rd,
-                rn,
-                rm,
-                op,
-                is_double,
-            } => {
+            Instruction::FpData2 { rd, rn, rm, op, esize } => {
+                if esize == 16 {
+                    let f = softfp::F16;
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let a = (self.regs.v[rn as usize] & 0xFFFF) as u64;
+                    let b = (self.regs.v[rm as usize] & 0xFFFF) as u64;
+                    let r = match op {
+                        FpOp2::Fadd => softfp::binop(f, env, softfp::BinOp::Add, a, b),
+                        FpOp2::Fsub => softfp::binop(f, env, softfp::BinOp::Sub, a, b),
+                        FpOp2::Fmul => softfp::binop(f, env, softfp::BinOp::Mul, a, b),
+                        FpOp2::Fdiv => softfp::binop(f, env, softfp::BinOp::Div, a, b),
+                        FpOp2::Fnmul => f.neg(softfp::binop(f, env, softfp::BinOp::Mul, a, b)),
+                        _ => unreachable!("FMAX/FMIN H decoded as FpHalfMinMax"),
+                    };
+                    self.regs.v[rd as usize] = r as u128;
+                    self.regs.advance_pc();
+                    return Ok(StepResult::Continue);
+                }
+                let is_double = esize == 64;
                 if matches!(op, FpOp2::Fadd | FpOp2::Fsub | FpOp2::Fmul | FpOp2::Fdiv | FpOp2::Fnmul) {
                     let (f, env) = self.fp_env(is_double);
                     let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
@@ -1158,25 +1170,48 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpData1 { rd, rn, op, is_double } => {
-                if op == 3 || (op == 5 && !is_double) || (op == 4 && is_double) {
-                    let (f, env) = self.fp_env(is_double);
-                    let a = self.fp_bits(rn, is_double);
-                    match op {
-                        3 => self.set_fp_bits(rd, is_double, softfp::sqrt(f, env, a)),
-                        5 => self.set_fp_bits(rd, true, softfp::convert(softfp::F32, softfp::F64, env, a)),
-                        _ => self.set_fp_bits(rd, false, softfp::convert(softfp::F64, softfp::F32, env, a)),
+            Instruction::FpData1 { rd, rn, op, esize } => {
+                if op == 3 {
+                    if esize == 16 {
+                        let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                        let a = (self.regs.v[rn as usize] & 0xFFFF) as u64;
+                        self.regs.v[rd as usize] = softfp::sqrt(softfp::F16, env, a) as u128;
+                    } else {
+                        let is_double = esize == 64;
+                        let (f, env) = self.fp_env(is_double);
+                        let a = self.fp_bits(rn, is_double);
+                        self.set_fp_bits(rd, is_double, softfp::sqrt(f, env, a));
                     }
                     self.regs.advance_pc();
                     return Ok(StepResult::Continue);
                 }
-                match (op, is_double) {
-                    (0, false) => self.regs.write_s(rd, self.regs.read_s(rn)),
-                    (0, true) => self.regs.write_d(rd, self.regs.read_d(rn)),
-                    (1, false) => self.regs.write_s(rd, self.regs.read_s(rn).abs()),
-                    (1, true) => self.regs.write_d(rd, self.regs.read_d(rn).abs()),
-                    (2, false) => self.regs.write_s(rd, -self.regs.read_s(rn)),
-                    (2, true) => self.regs.write_d(rd, -self.regs.read_d(rn)),
+                if matches!(op, 4 | 5 | 7) {
+                    let env = softfp::Env::from_fpcr(self.regs.fpcr);
+                    let (src_fmt, src_bits) = match esize {
+                        16 => (softfp::F16, (self.regs.v[rn as usize] & 0xFFFF) as u64),
+                        32 => (softfp::F32, self.fp_bits(rn, false)),
+                        _ => (softfp::F64, self.fp_bits(rn, true)),
+                    };
+                    match op {
+                        4 => self.set_fp_bits(rd, false, softfp::convert(src_fmt, softfp::F32, env, src_bits)),
+                        5 => self.set_fp_bits(rd, true, softfp::convert(src_fmt, softfp::F64, env, src_bits)),
+                        _ => {
+                            self.regs.v[rd as usize] = softfp::convert(src_fmt, softfp::F16, env, src_bits) as u128;
+                        }
+                    }
+                    self.regs.advance_pc();
+                    return Ok(StepResult::Continue);
+                }
+                match (op, esize) {
+                    (0, 16) => self.regs.v[rd as usize] = self.regs.v[rn as usize] & 0xFFFF,
+                    (1, 16) => self.regs.v[rd as usize] = self.regs.v[rn as usize] & 0x7FFF,
+                    (2, 16) => self.regs.v[rd as usize] = (self.regs.v[rn as usize] & 0xFFFF) ^ 0x8000,
+                    (0, 32) => self.regs.write_s(rd, self.regs.read_s(rn)),
+                    (0, 64) => self.regs.write_d(rd, self.regs.read_d(rn)),
+                    (1, 32) => self.regs.write_s(rd, self.regs.read_s(rn).abs()),
+                    (1, 64) => self.regs.write_d(rd, self.regs.read_d(rn).abs()),
+                    (2, 32) => self.regs.write_s(rd, -self.regs.read_s(rn)),
+                    (2, 64) => self.regs.write_d(rd, -self.regs.read_d(rn)),
                     _ => {
                         return Err(CpuError::UnimplementedInstruction {
                             raw: 0,
@@ -1540,6 +1575,165 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::FpMovGenHalf { rd, rn, to_fp, is_64 } => {
+                // a bit-pattern move of the low 16 bits; everything above them in the destination is zero
+                if to_fp {
+                    let bits = self.regs.read_x(rn) & 0xFFFF;
+                    self.regs.write_q(rd, bits as u128);
+                } else {
+                    let bits = (self.regs.read_q(rn) & 0xFFFF) as u64;
+                    if is_64 {
+                        self.regs.write_x(rd, bits);
+                    } else {
+                        self.regs.write_w(rd, bits as u32);
+                    }
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpRoundHalf { rd, rn, op } => {
+                // FRINTX/FRINTI (op 6, 7) round with FPCR.RMode; with FPCR.FZ16 a denormal input reads as zero
+                let f = softfp::F16;
+                let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                let inexact_flag = op == 6; // FRINTX raises IXC, FRINTI does not
+                let mode = if op >= 6 {
+                    match env.round {
+                        softfp::Round::Nearest => 0,
+                        softfp::Round::Up => 1,
+                        softfp::Round::Down => 2,
+                        softfp::Round::Zero => 3,
+                        softfp::Round::Odd => unreachable!("round-to-odd is not an FPCR mode"),
+                    }
+                } else {
+                    op
+                };
+                let src = softfp::flush_input(f, env, self.regs.read_q(rn) as u64 & 0xFFFF);
+                if f.is_nan(src) {
+                    // FPRoundInt: a NaN operand comes back quieted (the quiet bit of a half is bit 9); DN gives the default
+                    softfp::raise_round_int(f, src, 0.0, 0.0, false);
+                    let nan = if env.dn { f.default_nan() } else { src | 0x200 };
+                    self.regs.write_q(rd, nan as u128);
+                } else {
+                    // a half is exact in f64, and an integral value of a half is again exact as a half
+                    let widen = softfp::Env { fz: false, ..env };
+                    let v = f64::from_bits(softfp::convert(f, softfp::F64, widen, src));
+                    let r = match mode {
+                        1 => v.ceil(),
+                        2 => v.floor(),
+                        3 => v.trunc(),
+                        4 => v.round(),
+                        _ => v.round_ties_even(),
+                    };
+                    softfp::raise_round_int(f, src, v, r, inexact_flag);
+                    let bits = softfp::convert(softfp::F64, f, softfp::Env::DEFAULT, r.to_bits());
+                    self.regs.write_q(rd, bits as u128);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpIntConvHalf {
+                rd,
+                rn,
+                opcode,
+                rmode,
+                is_64,
+            } => {
+                let f = softfp::F16;
+                let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                if opcode == 2 || opcode == 3 {
+                    // SCVTF / UCVTF: integer register to half, rounded under FPCR.RMode
+                    let signed = opcode == 2;
+                    let x = if is_64 {
+                        self.regs.read_x(rn)
+                    } else {
+                        self.regs.read_w(rn) as u64
+                    };
+                    let x = if signed && !is_64 {
+                        x as u32 as i32 as i64 as u64
+                    } else {
+                        x
+                    };
+                    let neg = signed && (x as i64) < 0;
+                    let mag = if neg { (x as i64).unsigned_abs() } else { x };
+                    self.regs.write_q(rd, softfp::int_to_fp(f, env, neg, mag, 0) as u128);
+                } else {
+                    // half to integer with the rounding mode in rmode (opcodes 4/5 are ties-away)
+                    let src = softfp::flush_input(f, env, self.regs.read_q(rn) as u64 & 0xFFFF);
+                    let widen = softfp::Env { fz: false, ..env };
+                    let v = f64::from_bits(softfp::convert(f, softfp::F64, widen, src));
+                    let rounded = if opcode >= 4 {
+                        v.round()
+                    } else {
+                        match rmode {
+                            0 => v.round_ties_even(),
+                            1 => v.ceil(),
+                            2 => v.floor(),
+                            _ => v.trunc(),
+                        }
+                    };
+                    let signed = opcode == 0 || opcode == 4;
+                    softfp::raise_to_int(f, src, v, rounded, signed, is_64);
+                    let out: u64 = match (signed, is_64) {
+                        (true, true) => rounded as i64 as u64,
+                        (true, false) => rounded as i32 as u32 as u64,
+                        (false, true) => rounded as u64,
+                        (false, false) => rounded as u32 as u64,
+                    };
+                    self.regs.write_x(rd, out);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpFixedConvHalf {
+                rd,
+                rn,
+                opcode,
+                fbits,
+                is_64,
+            } => {
+                let f = softfp::F16;
+                let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                if opcode >= 2 {
+                    // SCVTF / UCVTF: fixed-point integer register to half
+                    let x = if is_64 {
+                        self.regs.read_x(rn)
+                    } else {
+                        self.regs.read_w(rn) as u64
+                    };
+                    let sx = if is_64 { x as i64 } else { x as u32 as i32 as i64 };
+                    let neg = opcode == 2 && sx < 0;
+                    let mag = if opcode == 2 {
+                        sx.unsigned_abs()
+                    } else if is_64 {
+                        x
+                    } else {
+                        x as u32 as u64
+                    };
+                    self.regs
+                        .write_q(rd, softfp::int_to_fp(f, env, neg, mag, fbits as u32) as u128);
+                } else {
+                    // FCVTZS / FCVTZU: scale, then truncate toward zero with saturation
+                    let src = softfp::flush_input(f, env, self.regs.read_q(rn) as u64 & 0xFFFF);
+                    let widen = softfp::Env { fz: false, ..env };
+                    let v = f64::from_bits(softfp::convert(f, softfp::F64, widen, src));
+                    let scaled = v * 2f64.powi(fbits as i32);
+                    let t = scaled.trunc();
+                    softfp::raise_to_int(f, src, scaled, t, opcode == 0, is_64);
+                    let out: u64 = match (opcode == 0, is_64) {
+                        (true, true) => t as i64 as u64,
+                        (true, false) => t as i32 as u32 as u64,
+                        (false, true) => t as u64,
+                        (false, false) => t as u32 as u64,
+                    };
+                    self.regs.write_x(rd, out);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::FpLoadStoreImm {
                 rt,
                 rn,
@@ -1832,6 +2026,105 @@ impl Cpu {
                         self.regs.write_w(rs, 0);
                     }
                 }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::AtomicRmw {
+                rs,
+                rt,
+                rn,
+                size_bytes,
+                op,
+            } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                let mask = if size_bytes == 8 {
+                    u64::MAX
+                } else {
+                    (1u64 << (size_bytes * 8)) - 1
+                };
+                let old = match size_bytes {
+                    1 => mmu.read_u8(addr)? as u64,
+                    2 => mmu.read_u16(addr)? as u64,
+                    4 => mmu.read_u32(addr)? as u64,
+                    _ => mmu.read_u64(addr)?,
+                };
+                let operand = self.regs.read_x(rs) & mask;
+                let bits = size_bytes as u32 * 8;
+                let sext = |v: u64| ((v << (64 - bits)) as i64) >> (64 - bits);
+                let new = match op {
+                    AtomicOp::Add => old.wrapping_add(operand),
+                    AtomicOp::Clr => old & !operand,
+                    AtomicOp::Eor => old ^ operand,
+                    AtomicOp::Set => old | operand,
+                    AtomicOp::Smax => sext(old).max(sext(operand)) as u64,
+                    AtomicOp::Smin => sext(old).min(sext(operand)) as u64,
+                    AtomicOp::Umax => old.max(operand),
+                    AtomicOp::Umin => old.min(operand),
+                    AtomicOp::Swp => operand,
+                } & mask;
+                match size_bytes {
+                    1 => mmu.write_u8(addr, new as u8)?,
+                    2 => mmu.write_u16(addr, new as u16)?,
+                    4 => mmu.write_u32(addr, new as u32)?,
+                    _ => mmu.write_u64(addr, new)?,
+                }
+                self.regs.write_x(rt, old);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Cas { rs, rt, rn, size_bytes } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                let mask = if size_bytes == 8 {
+                    u64::MAX
+                } else {
+                    (1u64 << (size_bytes * 8)) - 1
+                };
+                let old = match size_bytes {
+                    1 => mmu.read_u8(addr)? as u64,
+                    2 => mmu.read_u16(addr)? as u64,
+                    4 => mmu.read_u32(addr)? as u64,
+                    _ => mmu.read_u64(addr)?,
+                };
+                if old == self.regs.read_x(rs) & mask {
+                    let new = self.regs.read_x(rt);
+                    match size_bytes {
+                        1 => mmu.write_u8(addr, new as u8)?,
+                        2 => mmu.write_u16(addr, new as u16)?,
+                        4 => mmu.write_u32(addr, new as u32)?,
+                        _ => mmu.write_u64(addr, new)?,
+                    }
+                }
+                self.regs.write_x(rs, old);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Casp { rs, rt, rn, is_64 } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                let (cmp, new) = (
+                    [self.regs.read_x(rs), self.regs.read_x(rs + 1)],
+                    [self.regs.read_x(rt), self.regs.read_x(rt + 1)],
+                );
+                let (old, hit) = if is_64 {
+                    let old = [mmu.read_u64(addr)?, mmu.read_u64(addr.wrapping_add(8))?];
+                    (old, old == cmp)
+                } else {
+                    let old = [mmu.read_u32(addr)? as u64, mmu.read_u32(addr.wrapping_add(4))? as u64];
+                    (old, old[0] == cmp[0] & 0xFFFF_FFFF && old[1] == cmp[1] & 0xFFFF_FFFF)
+                };
+                if hit {
+                    if is_64 {
+                        mmu.write_u64(addr, new[0])?;
+                        mmu.write_u64(addr.wrapping_add(8), new[1])?;
+                    } else {
+                        mmu.write_u32(addr, new[0] as u32)?;
+                        mmu.write_u32(addr.wrapping_add(4), new[1] as u32)?;
+                    }
+                }
+                self.regs.write_x(rs, old[0]);
+                self.regs.write_x(rs + 1, old[1]);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -2578,11 +2871,19 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpAbd { rd, rn, rm, is_double } => {
-                // always the soft path: it raises the exception flags (IXC, IOC, ...) the host does at default FPCR too
-                let (f, env) = self.fp_env(is_double);
-                let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
-                let r = f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b));
+            Instruction::FpAbd { rd, rn, rm, esize } => {
+                let r = if esize == 16 {
+                    let f = softfp::F16;
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let a = (self.regs.read_q(rn) & 0xFFFF) as u64;
+                    let b = (self.regs.read_q(rm) & 0xFFFF) as u64;
+                    f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b)) & 0xFFFF
+                } else {
+                    let is_double = esize == 64;
+                    let (f, env) = self.fp_env(is_double);
+                    let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
+                    f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b))
+                };
                 self.regs.write_q(rd, r as u128);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -2607,31 +2908,127 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpScalarThreeSame {
-                rd,
-                rn,
-                rm,
-                op,
-                is_double,
-            } => {
-                let e = if is_double { 64 } else { 32 };
-                let keep = simd::lane_mask(e);
-                // a scalar op reads lane 0 only: replicate it so the unread lane cannot raise exception flags
-                let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
-                let m = simd::dup(simd::lane(self.regs.read_q(rm), e, 0), e, true);
-                let raw = simd::fp_three_same_fpcr(op, 0, n, m, is_double, false, self.regs.fpcr);
-                self.regs.write_q(rd, raw & keep);
+            Instruction::FpScalarThreeSame { rd, rn, rm, op, esize } => {
+                if esize == 16 {
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let a = (self.regs.read_q(rn) & 0xFFFF) as u64;
+                    let b = (self.regs.read_q(rm) & 0xFFFF) as u64;
+                    let r = match op {
+                        SimdFpOp3::Frecps => (softfp::recip_step(softfp::F16, env, a, b) & 0xFFFF) as u128,
+                        SimdFpOp3::Frsqrts => (softfp::rsqrt_step(softfp::F16, env, a, b) & 0xFFFF) as u128,
+                        SimdFpOp3::Fcmeq
+                        | SimdFpOp3::Fcmge
+                        | SimdFpOp3::Fcmgt
+                        | SimdFpOp3::Facge
+                        | SimdFpOp3::Facgt => {
+                            let (va, vb) = if matches!(op, SimdFpOp3::Facge | SimdFpOp3::Facgt) {
+                                (softfp::F16.abs(a), softfp::F16.abs(b))
+                            } else {
+                                (a, b)
+                            };
+                            softfp::raise_compare(softfp::F16, va, vb, op != SimdFpOp3::Fcmeq);
+                            let fa = softfp::flush_input(softfp::F16, env, va);
+                            let fb = softfp::flush_input(softfp::F16, env, vb);
+                            let (n, z, _c, v) = softfp::compare_f16_nzcv(fa, fb);
+                            let pass = if v {
+                                false
+                            } else {
+                                match op {
+                                    SimdFpOp3::Fcmeq => z,
+                                    SimdFpOp3::Fcmge | SimdFpOp3::Facge => !n,
+                                    SimdFpOp3::Fcmgt | SimdFpOp3::Facgt => !n && !z,
+                                    _ => unreachable!(),
+                                }
+                            };
+                            if pass { 0xFFFFu128 } else { 0u128 }
+                        }
+                        _ => unreachable!("unsupported scalar three-same half op"),
+                    };
+                    self.regs.write_q(rd, r);
+                } else {
+                    let is_double = esize == 64;
+                    let e = if is_double { 64 } else { 32 };
+                    let keep = simd::lane_mask(e);
+                    // a scalar op reads lane 0 only: replicate it so the unread lane cannot raise exception flags
+                    let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
+                    let m = simd::dup(simd::lane(self.regs.read_q(rm), e, 0), e, true);
+                    let raw = simd::fp_three_same_fpcr(op, 0, n, m, is_double, false, self.regs.fpcr);
+                    self.regs.write_q(rd, raw & keep);
+                }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpScalarTwoMisc { rd, rn, op, is_double } => {
-                let e = if is_double { 64 } else { 32 };
-                let keep = simd::lane_mask(e);
-                // replicate lane 0 so the unread lane (zero would be a divide-by-zero for FRECPE) raises no flags
-                let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
-                let raw = simd::fp_two_misc_fpcr(op, 0, n, is_double, false, self.regs.fpcr);
-                self.regs.write_q(rd, raw & keep);
+            Instruction::FpScalarTwoMisc { rd, rn, op, esize } => {
+                if esize == 16 {
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let f = softfp::F16;
+                    let a = (self.regs.read_q(rn) & 0xFFFF) as u64;
+                    let r = match op {
+                        SimdFpOp2::Frecpe => {
+                            let a_in = softfp::flush_input(f, env, a);
+                            simd::special_op2_flags(SimdFpOp2::Frecpe, f, a_in, simd::Rm::Ne, env.fz);
+                            let res = simd::fp_recip_estimate(a_in, 16);
+                            let res = if env.dn && f.is_nan(res) {
+                                f.default_nan()
+                            } else if env.fz && f.is_denormal(res) {
+                                res & 0x8000
+                            } else if f.is_inf(res) && !f.is_zero(a_in) && !f.is_inf(a_in) && !f.is_nan(a_in) {
+                                // a tiny input overflows: infinity only when the mode rounds that way, else the largest finite
+                                let neg = res != f.infinity(false);
+                                let to_inf = match env.round {
+                                    softfp::Round::Nearest => true,
+                                    softfp::Round::Up => !neg,
+                                    softfp::Round::Down => neg,
+                                    _ => false,
+                                };
+                                if to_inf { res } else { res - 1 }
+                            } else {
+                                res
+                            };
+                            (res & 0xFFFF) as u128
+                        }
+                        SimdFpOp2::Frsqrte => {
+                            let a_in = softfp::flush_input(f, env, a);
+                            simd::special_op2_flags(SimdFpOp2::Frsqrte, f, a_in, simd::Rm::Ne, env.fz);
+                            let res = simd::fp_rsqrt_estimate(a_in, 16);
+                            let res = if env.dn && f.is_nan(res) { f.default_nan() } else { res };
+                            (res & 0xFFFF) as u128
+                        }
+                        SimdFpOp2::Fcmeq0
+                        | SimdFpOp2::Fcmge0
+                        | SimdFpOp2::Fcmgt0
+                        | SimdFpOp2::Fcmle0
+                        | SimdFpOp2::Fcmlt0 => {
+                            softfp::raise_compare(f, a, 0, op != SimdFpOp2::Fcmeq0);
+                            let a_flushed = softfp::flush_input(f, env, a);
+                            let (n, z, _c, v) = softfp::compare_f16_nzcv(a_flushed, 0);
+                            let pass = if v {
+                                false
+                            } else {
+                                match op {
+                                    SimdFpOp2::Fcmeq0 => z,
+                                    SimdFpOp2::Fcmge0 => !n,
+                                    SimdFpOp2::Fcmgt0 => !n && !z,
+                                    SimdFpOp2::Fcmle0 => n || z,
+                                    SimdFpOp2::Fcmlt0 => n,
+                                    _ => unreachable!(),
+                                }
+                            };
+                            if pass { 0xFFFFu128 } else { 0u128 }
+                        }
+                        _ => unreachable!("unsupported scalar two-misc half op"),
+                    };
+                    self.regs.write_q(rd, r);
+                } else {
+                    let is_double = esize == 64;
+                    let e = if is_double { 64 } else { 32 };
+                    let keep = simd::lane_mask(e);
+                    // replicate lane 0 so the unread lane (zero would be a divide-by-zero for FRECPE) raises no flags
+                    let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
+                    let raw = simd::fp_two_misc_fpcr(op, 0, n, is_double, false, self.regs.fpcr);
+                    self.regs.write_q(rd, raw & keep);
+                }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -3596,6 +3993,132 @@ mod tests {
         assert!(format!("{:?}", super::super::decoder::decode(0x4d00_c949)).starts_with("Unimplemented"));
     }
 
+    /// Scalar half precision (FEAT_FP16): `FMOV` between a half register and a general register, `FMOV #imm`,
+    /// `FRINT*` and the integer / fixed-point conversions. Compilers emit `FMOV Hd, Wn` for every `_Float16` that
+    /// arrives in a general register, and TestFloat's half-precision groups stopped on the others. Expected values
+    /// are worked out by hand from the Arm ARM definitions (VFPExpandImm, FPRoundInt, FPToFixed, FixedToFP).
+    #[test]
+    fn scalar_fp16_fmov_frint_and_integer_conversions() {
+        const IOC: u32 = 1;
+        const OFC: u32 = 1 << 2;
+        const IXC: u32 = 1 << 4;
+        const FZ16: u32 = 1 << 19;
+        const DN: u32 = 1 << 25;
+        const RP: u32 = 1 << 22;
+        const RM: u32 = 2 << 22;
+        const RZ: u32 = 3 << 22;
+        // one instruction with v1 = h, x1 = x, FPCR = fpcr; returns the CPU to look at
+        let one = |word: u32, h: u16, x: u64, fpcr: u32| {
+            let (cpu, _) = run(&[word], |c, _| {
+                c.regs.write_q(0, u128::MAX); // a dirty destination shows any bits left unwritten
+                c.regs.write_q(1, (u128::MAX << 16) | h as u128);
+                c.regs.write_x(0, u64::MAX);
+                c.regs.write_x(1, x);
+                c.regs.fpcr = fpcr;
+            });
+            cpu
+        };
+        // FMOV Hd, Wn/Xn: the low 16 bits, everything above them zero. FMOV Wd/Xd, Hn: zero-extended.
+        assert_eq!(one(0x1ee7_0020, 0, 0xDEAD_3C00, 0).regs.read_q(0), 0x3C00); // fmov h0, w1
+        assert_eq!(one(0x9ee7_0020, 0, 0x1234_5678_9ABC_DEF0, 0).regs.read_q(0), 0xDEF0); // fmov h0, x1
+        let c = one(0x1ee6_0020, 0xABCD, 0, 0); // fmov w0, h1: the high half of x0 is cleared
+        assert_eq!((c.regs.read_x(0), c.regs.fpsr), (0xABCD, 0));
+        assert_eq!(one(0x9ee6_0020, 0x7C01, 0, 0).regs.read_x(0), 0x7C01); // fmov x0, h1: a signalling NaN moves untouched
+        assert_eq!(one(0x9ee6_0020, 0x7C01, 0, 0).regs.fpsr, 0);
+        // FMOV Hd, #imm: 1.0, -2.0, 0.5, 31.0, -0.125
+        for (word, want) in [
+            (0x1eee_1000u32, 0x3C00u128),
+            (0x1ef0_1000, 0xC000),
+            (0x1eec_1000, 0x3800),
+            (0x1ee7_f000, 0x4FC0),
+            (0x1ef8_1000, 0xB000),
+        ] {
+            assert_eq!(one(word, 0, 0, 0).regs.read_q(0), want, "{word:#010x}");
+        }
+        // FRINT*: (word, input, FPCR, result, FPSR)
+        let cases: &[(u32, u16, u32, u16, u32)] = &[
+            (0x1ee4_4020, 0x4100, 0, 0x4000, 0),    // frintn 2.5 -> 2.0 (ties to even)
+            (0x1ee4_4020, 0x4300, 0, 0x4400, 0),    // frintn 3.5 -> 4.0
+            (0x1ee6_4020, 0x4100, 0, 0x4200, 0),    // frinta 2.5 -> 3.0 (ties away)
+            (0x1ee4_c020, 0xB800, 0, 0x8000, 0),    // frintp -0.5 -> -0.0
+            (0x1ee5_4020, 0xB800, 0, 0xBC00, 0),    // frintm -0.5 -> -1.0
+            (0x1ee5_c020, 0x41CD, 0, 0x4000, 0),    // frintz 2.8984375 -> 2.0
+            (0x1ee7_4020, 0x4100, 0, 0x4000, IXC),  // frintx 2.5 -> 2.0, inexact
+            (0x1ee7_4020, 0x4000, 0, 0x4000, 0),    // frintx 2.0 is exact
+            (0x1ee7_c020, 0x4100, RP, 0x4200, 0),   // frinti follows RMode: toward +inf, no inexact
+            (0x1ee7_c020, 0x41CD, RZ, 0x4000, 0),   // frinti toward zero
+            (0x1ee7_4020, 0xB800, RM, 0xBC00, IXC), // frintx toward -inf: -0.5 -> -1.0, inexact
+            (0x1ee4_4020, 0x7C01, 0, 0x7E01, IOC),  // a signalling NaN comes back quieted, invalid
+            (0x1ee4_4020, 0x7E05, 0, 0x7E05, 0),    // a quiet NaN keeps its payload
+            (0x1ee4_4020, 0x7C01, DN, 0x7E00, IOC), // DN: the default NaN
+            (0x1ee4_4020, 0x7C00, 0, 0x7C00, 0),    // +inf
+            (0x1ee4_4020, 0xFC00, 0, 0xFC00, 0),    // -inf
+            (0x1ee4_4020, 0x7BFF, 0, 0x7BFF, 0),    // the largest finite half is already integral
+        ];
+        for &(word, h, fpcr, want, flags) in cases {
+            let c = one(word, h, 0, fpcr);
+            assert_eq!(
+                (c.regs.read_q(0), c.regs.fpsr),
+                (want as u128, flags),
+                "{word:#010x} in={h:#06x} fpcr={fpcr:#x}"
+            );
+        }
+        // FZ16 reads a denormal input as zero: ceil(2^-24) is 1.0 without it, 0.0 with it
+        assert_eq!(one(0x1ee4_c020, 0x0001, 0, 0).regs.read_q(0), 0x3C00);
+        assert_eq!(one(0x1ee4_c020, 0x0001, 0, FZ16).regs.read_q(0), 0);
+        // SCVTF / UCVTF to half: (word, x, FPCR, result, FPSR)
+        let cases: &[(u32, u64, u32, u16, u32)] = &[
+            (0x1ee2_0020, 0xFFFF_FFFB, 0, 0xC500, 0),         // scvtf h0, w1: -5 -> -5.0
+            (0x9ee2_0020, 65519, 0, 0x7BFF, IXC),             // scvtf h0, x1: rounds to the largest finite half
+            (0x9ee2_0020, 65520, 0, 0x7C00, OFC | IXC),       // the first value that rounds to infinity
+            (0x9ee2_0020, 65520, RZ, 0x7BFF, IXC),            // toward zero it stays at the largest finite half
+            (0x1ee3_0020, 0xFFFF_FFFF, 0, 0x7C00, OFC | IXC), // ucvtf h0, w1: 4294967295 overflows
+            // toward zero it still overflows before rounding: FPRound raises OFC and returns the largest finite half
+            (0x1ee3_0020, 0xFFFF_FFFF, RZ, 0x7BFF, OFC | IXC),
+        ];
+        for &(word, x, fpcr, want, flags) in cases {
+            let c = one(word, 0, x, fpcr);
+            assert_eq!(
+                (c.regs.read_q(0), c.regs.fpsr),
+                (want as u128, flags),
+                "{word:#010x} x={x:#x} fpcr={fpcr:#x}"
+            );
+        }
+        // half to integer: (word, input, result, FPSR)
+        let cases: &[(u32, u16, u64, u32)] = &[
+            (0x1ef8_0020, 0xC500, 0xFFFF_FFFB, 0),   // fcvtzs w0, h1: -5.0
+            (0x1ef8_0020, 0x41CD, 2, IXC),           // 2.8984375 -> 2, inexact
+            (0x1ef8_0020, 0x7E00, 0, IOC),           // NaN -> 0, invalid
+            (0x1ef8_0020, 0x7C00, 0x7FFF_FFFF, IOC), // +inf saturates
+            (0x1ef8_0020, 0xFC00, 0x8000_0000, IOC), // -inf saturates
+            (0x1ef9_0020, 0xBC00, 0, IOC),           // fcvtzu w0, h1: -1.0 is out of range
+            (0x1ef9_0020, 0x7BFF, 65504, 0),         // 65504 is exact
+            (0x1ee0_0020, 0x4100, 2, IXC),           // fcvtns: 2.5 -> 2 (ties to even)
+            (0x1ee0_0020, 0x4300, 4, IXC),           // fcvtns: 3.5 -> 4
+            (0x1ee4_0020, 0x4100, 3, IXC),           // fcvtas: 2.5 -> 3 (ties away)
+            (0x1ee8_0020, 0x41CD, 3, IXC),           // fcvtps: 2.8984375 -> 3
+            (0x1ef0_0020, 0xB800, 0xFFFF_FFFF, IXC), // fcvtms: -0.5 -> -1
+            (0x9ef8_0020, 0x7BFF, 65504, 0),         // fcvtzs x0, h1
+        ];
+        for &(word, h, want, flags) in cases {
+            let c = one(word, h, 0, 0);
+            assert_eq!(
+                (c.regs.read_x(0), c.regs.fpsr),
+                (want, flags),
+                "{word:#010x} in={h:#06x}"
+            );
+        }
+        // fixed point: scvtf h0, w1, #8 and fcvtzs w0, h1, #4
+        assert_eq!(one(0x1ec2_e020, 0, 384, 0).regs.read_q(0), 0x3E00); // 384 / 256 = 1.5
+        assert_eq!(one(0x1ec2_e020, 0, (-384i32) as u32 as u64, 0).regs.read_q(0), 0xBE00);
+        let c = one(0x1ed8_f020, 0x3E00, 0, 0); // 1.5 * 16 = 24
+        assert_eq!((c.regs.read_x(0), c.regs.fpsr), (24, 0));
+        let c = one(0x1ed8_f020, 0x41CD, 0, 0); // 2.8984375 * 16 = 46.375 -> 46, inexact
+        assert_eq!((c.regs.read_x(0), c.regs.fpsr), (46, IXC));
+        // reserved encodings stay undecoded: FCVTAS with rmode 1
+        assert!(format!("{:?}", super::super::decoder::decode(0x1eec_0020)).starts_with("Unimplemented"));
+    }
+
     #[test]
     fn simd_modified_immediate() {
         let words = [
@@ -4124,5 +4647,81 @@ mod fuzz_scalar_nan {
         assert_eq!(c.regs.v[0] & 0xffff_ffff_ffff_ffff, 0x7fc0_0000_7fc0_0001);
         let c = run1(0x6e62_fc20, &[(1, 0), (2, 0)]);
         assert_eq!(c.regs.v[0], 0x7ff8_0000_0000_0000_7ff8_0000_0000_0000);
+    }
+
+    #[test]
+    fn scalar_fp16_arithmetic_unary_sqrt_and_fcvt() {
+        let fz16 = 1 << 19;
+        let fz = 1 << 24;
+        // 1.5 (0x3e00) + 2.0 (0x4000) = 3.5 (0x4300); - 2.0 = -0.5 (0xb800); * 2.0 = 3.0 (0x4200)
+        assert_eq!(run1(0x1ee2_2820, &[(1, 0x3e00), (2, 0x4000)]).regs.v[0], 0x4300);
+        assert_eq!(run1(0x1ee2_3820, &[(1, 0x3e00), (2, 0x4000)]).regs.v[0], 0xb800);
+        assert_eq!(run1(0x1ee2_0820, &[(1, 0x3e00), (2, 0x4000)]).regs.v[0], 0x4200);
+        // 3.0 (0x4200) / 2.0 (0x4000) = 1.5 (0x3e00); fnmul(1.5, 2.0) = -3.0 (0xc200)
+        assert_eq!(run1(0x1ee2_1820, &[(1, 0x4200), (2, 0x4000)]).regs.v[0], 0x3e00);
+        assert_eq!(run1(0x1ee2_8820, &[(1, 0x3e00), (2, 0x4000)]).regs.v[0], 0xc200);
+        // fnmul h0, h1, h2 on qNaN flips the sign bit even without touching payload
+        assert_eq!(run1(0x1ee2_8820, &[(1, 0x7e01), (2, 0x3c00)]).regs.v[0], 0xfe01);
+        // FADD H honours FZ16 (flushes denormal without IDC), ignores FZ
+        let c = run_fpcr(0x1ee2_2820, fz16, &[(1, 0x0001), (2, 0x0000)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0, 0));
+        let c = run_fpcr(0x1ee2_2820, fz, &[(1, 0x0001), (2, 0x0000)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0x0001, 0));
+        // FMOV / FABS / FNEG H zero upper 112 bits and leave sNaN unquieted without IOC
+        let dirty_snan = (0xdead_beefu128 << 64) | 0xfd01;
+        let c = run1(0x1ee0_4020, &[(1, dirty_snan)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0xfd01, 0));
+        let c = run1(0x1ee0_c020, &[(1, dirty_snan)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0x7d01, 0));
+        let c = run1(0x1ee1_4020, &[(1, dirty_snan)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0x7d01, 0));
+        // FSQRT H: sqrt(4.0 = 0x4400) = 2.0 (0x4000)
+        assert_eq!(run1(0x1ee1_c020, &[(1, 0x4400)]).regs.v[0], 0x4000);
+        // FCVT S<-H (0x1ee2_4020), D<-H (0x1ee2_c020), H<-S (0x1e23_c020), H<-D (0x1e63_c020)
+        assert_eq!(run1(0x1ee2_4020, &[(1, 0x3e00)]).regs.v[0], 0x3fc0_0000);
+        assert_eq!(run1(0x1ee2_c020, &[(1, 0x3e00)]).regs.v[0], 0x3ff8_0000_0000_0000);
+        assert_eq!(run1(0x1e23_c020, &[(1, 0x3fc0_0000)]).regs.v[0], 0x3e00);
+        assert_eq!(run1(0x1e63_c020, &[(1, 0x3ff8_0000_0000_0000)]).regs.v[0], 0x3e00);
+    }
+
+    #[test]
+    fn test_scalar_fp16_edge_forms() {
+        assert_eq!(run1(0x5ef9d820, &[(1, 0x3c00)]).regs.v[0], 0x3bfc); // frecpe h0, h1
+        assert_eq!(run1(0x7ef9d820, &[(1, 0x3c00)]).regs.v[0], 0x3bfc); // frsqrte h0, h1
+        assert_eq!(run1(0x5e423c20, &[(1, 0x3c00), (2, 0x4000)]).regs.v[0], 0); // frecps h0, h1, h2
+        assert_eq!(run1(0x5ec23c20, &[(1, 0x3c00), (2, 0x3c00)]).regs.v[0], 0x3c00); // frsqrts h0, h1, h2
+        assert_eq!(run1(0x7ec21420, &[(1, 0x3c00), (2, 0x4000)]).regs.v[0], 0x3c00); // fabd h0, h1, h2
+        assert_eq!(run1(0x5ef8d820, &[(1, 0x0000)]).regs.v[0], 0xffff); // fcmeq h0, h1, #0.0
+        // M3: frecpe of a tiny negative under RP overflows to -max, not -inf
+        let mut c = Cpu::new();
+        c.regs.fpcr = 1 << 22;
+        c.regs.v[1] = 0x8001;
+        let mut mmu = Memory::new();
+        mmu.map_range(0x1000, 0x1000, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(0x1000, 0x5ef9d820).unwrap();
+        c.regs.pc = 0x1000;
+        c.step(&mut mmu).unwrap();
+        assert_eq!((c.regs.v[0], c.regs.fpsr & 0x9f), (0xfbff, 0x14));
+    }
+
+    /// FEAT_LSE atomics were decoded as plain loads/stores; expected values are from Apple M3 (op.c: swp/ldadd/cas on bytes).
+    #[test]
+    fn lse_byte_atomics_match_m3() {
+        let run = |word: u32, mem: u8, x2: u64, x4: u64| {
+            let mut mmu = Memory::new();
+            let mut cpu = Cpu::new();
+            mmu.map_range(0x1000, 0x1000, Permission::READ_WRITE_EXECUTE);
+            mmu.write_u32(0x1000, word).unwrap();
+            mmu.write_u8(0x1800, mem).unwrap();
+            cpu.regs.pc = 0x1000;
+            (cpu.regs.x[0], cpu.regs.x[2], cpu.regs.x[4]) = (0x1800, x2, x4);
+            cpu.step(&mut mmu).unwrap();
+            (mmu.read_u8(0x1800).unwrap(), cpu.regs.x[2], cpu.regs.x[4])
+        };
+        assert_eq!(run(0x3822_0004, 1, 0xff, 0), (0, 0xff, 1)); // ldaddb w2, w4, [x0]
+        assert_eq!(run(0x3822_8004, 1, 2, 0), (2, 2, 1)); // swpb w2, w4, [x0]
+        assert_eq!(run(0x08e2_fc04, 5, 5, 9), (9, 5, 9)); // casalb hit
+        assert_eq!(run(0x08e2_fc04, 5, 7, 9), (5, 5, 9)); // casalb miss: w2 gets the old value
+        assert_eq!(run(0x38bf_c004, 0x81, 2, 7), (0x81, 2, 0x81)); // ldaprb w4, [x0] (FEAT_LRCPC): zero-extended load
     }
 }

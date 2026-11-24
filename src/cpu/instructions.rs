@@ -259,18 +259,19 @@ pub enum Instruction {
     /// No Operation / Hint
     Nop,
 
-    /// Floating-Point 2-Source Arithmetic: `FADD/FSUB/FMUL/FDIV Dd/Sd, Dn/Sn, Dm/Sm`
+    /// Floating-Point 2-Source Arithmetic: `FADD/FSUB/FMUL/FDIV Dd/Sd/Hd, Dn/Sn/Hn, Dm/Sm/Hm`
+    /// (`esize` is 16, 32, or 64).
     FpData2 {
         rd: u8,
         rn: u8,
         rm: u8,
         op: FpOp2,
-        is_double: bool,
+        esize: u8,
     },
 
-    /// Floating-Point 1-Source: `FMOV`/`FABS`/`FNEG`/`FSQRT Dd/Sd, Dn/Sn` (op 0..3) and
-    /// `FCVT` (op = bits 17..15: 4 to single from double, 5 to double from single)
-    FpData1 { rd: u8, rn: u8, op: u8, is_double: bool },
+    /// Floating-Point 1-Source: `FMOV`/`FABS`/`FNEG`/`FSQRT Hd/Dd/Sd, Hn/Dn/Sn` (op 0..3) and
+    /// `FCVT` (op = bits 17..15: 4 to single, 5 to double, 7 to half; `esize` is source width 16/32/64).
+    FpData1 { rd: u8, rn: u8, op: u8, esize: u8 },
 
     /// Floating-Point 3-Source: `FMADD` (o1 0, o0 0), `FMSUB` (0, 1), `FNMADD` (1, 0), `FNMSUB` (1, 1),
     /// fused (one rounding): `Dd = (o1 ? -Da : Da) + (o0 ? -Dn : Dn) * Dm` (`esize` is 16, 32, or 64).
@@ -335,6 +336,33 @@ pub enum Instruction {
     /// Floating-Point / GP Register Transfer: `FMOV Dd, Xn`, `FMOV Xd, Dn`, etc.
     FpMovGen { rd: u8, rn: u8, to_fp: bool, is_64: bool },
 
+    /// `FMOV Hd, Wn/Xn` and `FMOV Wd/Xd, Hn` (FEAT_FP16): the low 16 bits move as a bit pattern; the rest of the
+    /// destination is zero.
+    FpMovGenHalf { rd: u8, rn: u8, to_fp: bool, is_64: bool },
+
+    /// `FRINT{N,P,M,Z,A,X,I} Hd, Hn` (FEAT_FP16); `op` is bits 17..15 of the encoding as for `FpRound`.
+    FpRoundHalf { rd: u8, rn: u8, op: u8 },
+
+    /// Half-precision <-> integer register conversion: `FCVT{N,P,M,Z,A}{S,U} Wd/Xd, Hn`, `SCVTF`/`UCVTF Hd, Wn/Xn`.
+    /// `opcode` and `rmode` as for `FpIntConv`.
+    FpIntConvHalf {
+        rd: u8,
+        rn: u8,
+        opcode: u8,
+        rmode: u8,
+        is_64: bool,
+    },
+
+    /// Half-precision <-> fixed-point register conversion: `FCVTZS`/`FCVTZU Wd/Xd, Hn, #fbits` and
+    /// `SCVTF`/`UCVTF Hd, Wn/Xn, #fbits`; `opcode` and `fbits` as for `FpFixedConv`.
+    FpFixedConvHalf {
+        rd: u8,
+        rn: u8,
+        opcode: u8,
+        fbits: u8,
+        is_64: bool,
+    },
+
     /// Floating-Point Single Load / Store (Immediate unsigned offset): `LDR/STR St/Dt, [Xn, #offset]`
     FpLoadStoreImm {
         rt: u8,
@@ -390,6 +418,22 @@ pub enum Instruction {
         is_load: bool,
         is_exclusive: bool,
     },
+
+    /// FEAT_LSE `LD<op>[A][L]` / `ST<op>` / `SWP[A][L]` (B/H/W/X): atomically `[Xn] = op([Xn], Rs)`, old value to Rt
+    /// (zero-extended; Rt = ZR discards it). Acquire/release bits do not matter on this single-core emulator.
+    AtomicRmw {
+        rs: u8,
+        rt: u8,
+        rn: u8,
+        size_bytes: u8,
+        op: AtomicOp,
+    },
+
+    /// FEAT_LSE `CAS[A][L][B|H]`: if `[Xn] == Rs` store Rt; Rs always receives the old value.
+    Cas { rs: u8, rt: u8, rn: u8, size_bytes: u8 },
+
+    /// FEAT_LSE `CASP[A][L]`: compare-and-swap of the even/odd register pair Rs,Rs+1 with Rt,Rt+1 (W or X pairs).
+    Casp { rs: u8, rt: u8, rn: u8, is_64: bool },
 
     /// SIMD&FP Load / Store Pair: `LDP/STP St/Dt/Qt, St2/Dt2/Qt2, [Xn, #offset]` (also `LDNP/STNP`)
     SimdLoadStorePair {
@@ -526,30 +570,25 @@ pub enum Instruction {
         fbits: u8,
     },
 
-    /// AdvSIMD scalar three same `FABD Sd/Dd, Sn/Dn, Sm/Dm`: `|n - m|` (NaN propagates), upper bits zeroed
-    FpAbd { rd: u8, rn: u8, rm: u8, is_double: bool },
+    /// AdvSIMD scalar three same `FABD Sd/Dd/Hd, Sn/Dn/Hn, Sm/Dm/Hm`: `|n - m|` (NaN propagates), upper bits zeroed
+    FpAbd { rd: u8, rn: u8, rm: u8, esize: u8 },
 
     /// AdvSIMD scalar three same `FMULX Sd/Dd, Sn/Dn, Sm/Dm`. `0 × ∞` is ±2.0 rather than a NaN.
     /// Lane 0 is written and the rest of `Vd` is zeroed.
     FpMulx { rd: u8, rn: u8, rm: u8, is_double: bool },
 
-    /// Scalar `FRECPS` / `FRSQRTS Sd/Dd, Sn/Dn, Sm/Dm` (AdvSIMD scalar three same). Lane 0 is written, the rest zeroed.
+    /// Scalar `FRECPS` / `FRSQRTS Sd/Dd/Hd, Sn/Dn/Hn, Sm/Dm/Hm` (AdvSIMD scalar three same). Lane 0 is written, the rest zeroed.
     FpScalarThreeSame {
         rd: u8,
         rn: u8,
         rm: u8,
         op: SimdFpOp3,
-        is_double: bool,
+        esize: u8,
     },
 
-    /// Scalar `FRECPE` / `FRSQRTE Sd/Dd, Sn/Dn` (AdvSIMD scalar two-register misc) and the scalar
+    /// Scalar `FRECPE` / `FRSQRTE Sd/Dd/Hd, Sn/Dn/Hn` (AdvSIMD scalar two-register misc) and the scalar
     /// `FRINT32Z/32X/64Z/64X` (FP data processing, one source). Lane 0 is written, the rest zeroed.
-    FpScalarTwoMisc {
-        rd: u8,
-        rn: u8,
-        op: SimdFpOp2,
-        is_double: bool,
-    },
+    FpScalarTwoMisc { rd: u8, rn: u8, op: SimdFpOp2, esize: u8 },
 
     /// `DUP Vd.<T>, Wn/Xn`
     SimdDupGeneral {
@@ -1252,4 +1291,18 @@ pub enum Sha3Op {
     Bcax,
     Rax1,
     Xar(u8),
+}
+
+/// The operation of a FEAT_LSE read-modify-write atomic (`LDADD`, `LDCLR`, `LDEOR`, `LDSET`, `LD{S,U}{MAX,MIN}`, `SWP`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtomicOp {
+    Add,
+    Clr,
+    Eor,
+    Set,
+    Smax,
+    Smin,
+    Umax,
+    Umin,
+    Swp,
 }

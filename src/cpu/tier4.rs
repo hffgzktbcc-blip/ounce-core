@@ -862,16 +862,11 @@ impl Lowerer {
                 }
             }
 
-            Instruction::FpData2 {
-                rd,
-                rn,
-                rm,
-                op,
-                is_double,
-            } => {
-                if self.exact_fp {
+            Instruction::FpData2 { rd, rn, rm, op, esize } => {
+                if self.exact_fp || esize == 16 {
                     return Err(());
                 }
+                let is_double = esize == 64;
                 let a = self.b.get(Reg::VLo(rn));
                 let b = self.b.get(Reg::VLo(rm));
                 let fop = match op {
@@ -2471,6 +2466,166 @@ mod tests {
             },
         );
         assert!(e.fallback_insns >= 9);
+    }
+
+    #[test]
+    fn scalar_fp16_edge_forms_fall_back_in_all_tiers() {
+        let e = check_all_tiers(
+            &[
+                0xd2800020, // mov x0, #1
+                0x5ef9d820, // frecpe h0, h1
+                0x7ef9d840, // frsqrte h0, h2
+                0x5e423c60, // frecps h0, h3, h2
+                0x5ec23c80, // frsqrts h0, h4, h2
+                0x7ec214a0, // fabd h0, h5, h2
+                0x5ef8d8c0, // fcmeq h0, h6, #0.0
+                0x91000400, // add x0, x0, #1
+                0xd4000001, // svc #1
+            ],
+            |cpu| {
+                cpu.regs.v[1] = 0x3c00;
+                cpu.regs.v[2] = 0x3c00;
+                cpu.regs.v[3] = 0x4000;
+                cpu.regs.v[4] = 0x3c00;
+                cpu.regs.v[5] = 0x4000;
+            },
+        );
+        assert!(e.fallback_insns >= 6);
+    }
+
+    /// FEAT_LSE `LD<op>`/`ST<op>`/`SWP`/`CAS`/`CASP` (B/H/W/X, hit and miss, Rt = ZR). Each row is a digest of memory and
+    /// x2..x5 after one instruction, from the same operations run natively on Apple M3. They were silently decoded as
+    /// plain loads/stores before; Tier-3 and Tier-4 hand them to the interpreter, so all three engines must agree.
+    #[test]
+    fn lse_atomics_match_apple_m3_on_all_tiers() {
+        #[rustfmt::skip]
+        let insns: [(u32, u32); 60] = [
+        (0x38220004, 0), (0x78a20004, 0), (0xb8620004, 0), (0xf8e20004, 0),
+        (0x38a21004, 0), (0x78621004, 0), (0xb8e21004, 0), (0xf8221004, 0),
+        (0x38622004, 0), (0x78e22004, 0), (0xb8222004, 0), (0xf8a22004, 0),
+        (0x38e23004, 0), (0x78223004, 0), (0xb8a23004, 0), (0xf8623004, 0),
+        (0x38224004, 0), (0x78a24004, 0), (0xb8624004, 0), (0xf8e24004, 0),
+        (0x38a25004, 0), (0x78625004, 0), (0xb8e25004, 0), (0xf8225004, 0),
+        (0x38626004, 0), (0x78e26004, 0), (0xb8226004, 0), (0xf8a26004, 0),
+        (0x38e27004, 0), (0x78227004, 0), (0xb8a27004, 0), (0xf8627004, 0),
+        (0x38228004, 0), (0x78a28004, 0), (0xb8628004, 0), (0xf8e28004, 0),
+        (0x3822001f, 0), (0x7822001f, 0), (0xb822001f, 0), (0xf822001f, 0),
+        (0x3822301f, 0), (0x7822301f, 0), (0xb822301f, 0), (0xf822301f, 0),
+        (0x3822501f, 0), (0x7822501f, 0), (0xb822501f, 0), (0xf822501f, 0),
+        (0x3822601f, 0), (0x7822601f, 0), (0xb822601f, 0), (0xf822601f, 0),
+        (0x08e2fc04, 1), (0x48e2fc04, 2), (0x88e27c04, 4), (0xc8e27c04, 8),
+        (0x0862fc04, 12), (0x48227c04, 16), (0xf8e2001f, 0), (0x3822801f, 0),
+        ];
+        #[rustfmt::skip]
+        let digests: [u64; 120] = [
+        0x5f0f74ee84e031d1, 0xf92e2e43af2380fd, 0xdbf570aca545ca90,
+        0xec43470caadf7b6c, 0x6a33a68453477000, 0x640d31b37c4a9a02,
+        0xa753a3224e3e06e0, 0xeae6208db112513e, 0xcd45c79bd7d8de12,
+        0x3c357f8c4e3fa27d, 0x62f958972a267412, 0x2f4a985549fb9cec,
+        0xd0a385ddc803c4f2, 0x04dad7f6ba3b8182, 0x3930dd39f7a44e32,
+        0x4cd953718bb5ba3e, 0x92db8946c25ea471, 0xf92e2e43af2380fd,
+        0x575c83ecdfaa0370, 0xec43470caadf7b6c, 0x53f82505b09fdbfe,
+        0x640d31b37c4a9a02, 0xf58a0a10ae77b6ca, 0xeae6208db112513e,
+        0xe330562f5b8e9d01, 0xf92e2e43af2380fd, 0x41d8fbe965696480,
+        0xec43470caadf7b6c, 0x84b4b967562a5bbe, 0x640d31b37c4a9a02,
+        0x7803ec9d9cd0086a, 0xeae6208db112513e, 0xe330562f5b8e9d01,
+        0x3c357f8c4e3fa27d, 0xab52886a64657502, 0x2f4a985549fb9cec,
+        0xc1ac0668cb21e6b2, 0x04dad7f6ba3b8182, 0xc19691f5a86063ea,
+        0x4cd953718bb5ba3e, 0x4bc306da7960b7a2, 0x2a8f89798ca239b6,
+        0x41d8fbe965696480, 0xfd70108d8249e806, 0x84b4b967562a5bbe,
+        0x3e5046dfcb444a26, 0x0569cf3786159eb2, 0x6103b7ccb22914a6,
+        0xe330562f5b8e9d01, 0x2a8f89798ca239b6, 0x41d8fbe965696480,
+        0x2f4a985549fb9cec, 0x84b4b967562a5bbe, 0x04dad7f6ba3b8182,
+        0x0569cf3786159eb2, 0x6103b7ccb22914a6, 0x4bc306da7960b7a2,
+        0x3c357f8c4e3fa27d, 0xab52886a64657502, 0xfd70108d8249e806,
+        0xc1ac0668cb21e6b2, 0x3e5046dfcb444a26, 0xc19691f5a86063ea,
+        0x4cd953718bb5ba3e, 0xe330562f5b8e9d01, 0x2a8f89798ca239b6,
+        0x41d8fbe965696480, 0xfd70108d8249e806, 0x84b4b967562a5bbe,
+        0x3e5046dfcb444a26, 0xc19691f5a86063ea, 0x6103b7ccb22914a6,
+        0x8de83a03fb6b6629, 0xf5599b66649c88c6, 0x5d5635166a8ae7d8,
+        0xf5599b66649c88c6, 0x5d5635166a8ae7d8, 0xf5599b66649c88c6,
+        0xfe94667ac9852658, 0x10f00e982a9f5f46, 0x6e6017ca85dadb39,
+        0xf5599b66649c88c6, 0xb3ace1ba05e83ae8, 0xf5599b66649c88c6,
+        0xf3b81224573f7b36, 0xf5599b66649c88c6, 0x4dff70272a645922,
+        0x10f00e982a9f5f46, 0x1784baad3eb9222a, 0x22b3708ed13571ad,
+        0xb3ace1ba05e83ae8, 0xec85c5dc1a2a1fa0, 0xf3b81224573f7b36,
+        0x6317923f3414364a, 0x1784baad3eb9222a, 0xa07360bdf1379c4e,
+        0x6e6017ca85dadb39, 0x22b3708ed13571ad, 0xb3ace1ba05e83ae8,
+        0x72e3417c0542c846, 0xf3b81224573f7b36, 0x72e3417c0542c846,
+        0x1784baad3eb9222a, 0xa07360bdf1379c4e, 0x9271b514b96c25a2,
+        0x98664ffaba80c0dd, 0x660db0f5e755f202, 0x833e19c465da0082,
+        0x2b46536a4ed2e4b2, 0x6488d14c91c8ec2e, 0x4b042e1bb9261492,
+        0x8755bfea0e165716, 0xdfd50597b5a48cdb, 0xd1211fb0845eda31,
+        0xa544fa21448837e3, 0x781d419a9cbb03d1, 0xfe94667ac9852658,
+        0x10f00e982a9f5f46, 0x6e6017ca85dadb39, 0x22b3708ed13571ad,
+        ];
+        let sets = [
+            (
+                0x8070_6050_4030_2010u64,
+                0x7fff_ffff_ffff_ff7fu64,
+                0xa5a5_a5a5_a5a5_a5a5u64,
+            ),
+            (0x7f7f_7f7f_7f7f_7f7f, 0x8000_0000_0000_0080, 0x0123_4567_89ab_cdef),
+        ];
+        for (i, &(word, k)) in insns.iter().enumerate() {
+            for (si, &(m0, a, b)) in sets.iter().enumerate() {
+                let m1 = m0 ^ 0x1111_1111_1111_1111;
+                let hit = si == 1;
+                let mask = if k == 8 {
+                    u64::MAX
+                } else {
+                    (1u64 << (8 * (k % 12).min(4))) - 1
+                };
+                let (x2, x3) = match k {
+                    0 => (a, m1 ^ 1),
+                    12 => (
+                        if hit { m0 } else { m0 ^ 1 } & 0xffff_ffff,
+                        if hit { m0 >> 32 } else { (m0 >> 32) ^ 1 } & 0xffff_ffff,
+                    ),
+                    16 => (if hit { m0 } else { m0 ^ 1 }, if hit { m1 } else { m1 ^ 1 }),
+                    _ => (if hit { m0 } else { m0 ^ 1 } & mask, m1 ^ 1),
+                };
+                let (mut cpu, mut mmu) = setup(&[0xd280_0021, word, 0xd400_0001]);
+                mmu.write_u64(DATA, m0).unwrap();
+                mmu.write_u64(DATA + 8, m1).unwrap();
+                for (r, v) in [(0, DATA), (2, x2), (3, x3), (4, b), (5, b ^ 0xffff)] {
+                    cpu.regs.x[r] = v;
+                }
+                let (c, m) = clone(&cpu, &mmu);
+                let reference = run_interp(c, m, 100);
+                assert!(
+                    matches!(reference.exit, BlockExit::Svc { .. }),
+                    "row {i}.{si}: {:?}",
+                    reference.exit
+                );
+                let mut h = 0xcbf2_9ce4_8422_2325u64;
+                let mem = [
+                    u64::from_le_bytes(reference.data[..8].try_into().unwrap()),
+                    u64::from_le_bytes(reference.data[8..16].try_into().unwrap()),
+                ];
+                for v in [
+                    mem[0],
+                    mem[1],
+                    reference.x[2],
+                    reference.x[3],
+                    reference.x[4],
+                    reference.x[5],
+                ] {
+                    for byte in v.to_le_bytes() {
+                        h = (h ^ byte as u64).wrapping_mul(0x100_0000_01b3);
+                    }
+                }
+                assert_eq!(
+                    h,
+                    digests[2 * i + si],
+                    "row {i}.{si} word {word:#010x} differs from Apple M3"
+                );
+                let (c, m) = clone(&cpu, &mmu);
+                assert_eq!(run_tier3(c, m, 100), reference, "row {i}.{si}: Tier-3 differs");
+                let (c, m) = clone(&cpu, &mmu);
+                assert_eq!(run_tier4(c, m, 100).0, reference, "row {i}.{si}: Tier-4 differs");
+            }
+        }
     }
 
     #[test]

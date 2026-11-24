@@ -2,15 +2,20 @@
 
 Notable changes to ounce-core. Evidence for each release lives under `docs/releases/`.
 
-## Unreleased
+## 0.11.0 — 2026-11-23 (released)
 
+- Added: typed Rust library API in `src/lib.rs` (`EngineKind`, `RunOptions`, `StopReport`, `StopClass`, `run_elf`, `run_nro`, `#539`) and `--report-json=-` pure JSON stdout output with diagnostics routed to `stderr` (`#537`), plus zero-dep ELF symbolication and frame-pointer backtraces (`#531`).
+- Changed: pure-Rust headless default build (`default = []`) with zero C system library dependencies; host audio (`cpal`) and controller input (`gilrs`) are now gated behind opt-in `--features host-io` (`#550`). Enforced workspace `unsafe_op_in_unsafe_fn`, `undocumented_unsafe_blocks`, and `missing_safety_doc` lints (`#538`), and slimmed PR CI / pruned obsolete workflows (`#541`, `#548`).
+- Added/Fixed (CPU & Linux syscalls): full scalar FP16 decode and execution (`FADD`/`FSUB`/`FMUL`/`FDIV`/`FNMUL`/`FSQRT`/`FMOV`/`FABS`/`FNEG`/`FCVT`/`FCSEL`/`FCMP`/`FCCMP`, `FMOV H<->W/X`, `#imm`, `FRINT* H`, and `int<->half` conversions with Apple Silicon-verified `FPConvert` `FZ`/`FZ16` behaviour, `#531`, `#553`, `#554`), vector `.4H`/`.8H` `FABS`/`FNEG` (`#543`), `LD2–LD4`/`ST2–ST4`/`LD2R–LD4R` (`#547`), `tkill`/`tgkill` (`128+signal` exit status, `#549`), and `newfstatat` path handling (`#551`).
+- Verified (differential sweeps on `baec66b`):
+  - Berkeley TestFloat 3e (`ARM-VFPv2`, tininess before rounding): `5,921,280` vectors across all 9 groups (`0` real mismatches vs `qemu-aarch64`; `656` FMA NaN-priority cases match `qemu-aarch64`, 6 sampled confirmed addend-NaN on Apple M3), plus `144/144` `FPCR.FZ`/`FZ16`/`DN` and `908/908` scalar `f16` `FMOV`/`#imm`/fixed-point checks across Interpreter, Tier-3, and Tier-4.
+  - Compiler & numerical suites vs `qemu-aarch64` / native references: Csmith 2.4.0 (`2,815` compared across `-O1`–`-O3 -mcpu=apple_m1`, `0` differ; `385` timed out under QEMU), YARPGen v2 (`498/500`; 2 exceeded instruction budget), `gcc.c-torture/execute` (`1,586` at `-O0`, `1,602` at `-O2` and `-O3 -mcpu=apple_m1`; 3 temp-file tests differ), CompCert `test/c` (`69/72`; `knucleotide` needs `stdin`), `PolyBench/C` (`60/60` vs QEMU and native x86), `musl libc-test` (`276` pass, `198/199` math; 48 differ on unsupported threads/files/signals), Kahan `Paranoia` (`4/4`), Shewchuk predicates (`90,000` cases, `0` mismatches), and physics/quantum invariants (`9/9`).
+  - Real libraries & VMs: MicroPython (`581/582` `tests/basics` vs QEMU), QuickJS (`5/5` at `-O3 -mcpu=apple_m1`), `libpng 1.6.59` (`168/168`), `libdeflate` (`1,800` round-trips, `0` failures; `1.25M` vs `17.8M` instructions proving `CRC32`/`PMULL`/`EOR3`), `bzip2` (`140/140`), `brotli` (`205/205`), and `PCRE2` (`51/51` patterns, `78` matches).
 - Added: 100 more paper checks (102 in all) under `docs/verify/papers/`, with a shared harness (`common/ounce_paper.h`,
   `common/lib.sh`) and `run_all.sh`. They cover ciphers (Speck, Simon, AES, Serpent, Twofish, ChaCha, Ascon and others),
   hashes (SHA-1/2/3, BLAKE2, RIPEMD-160, Skein, xxHash, SipHash and others), random number generators (Mersenne Twister,
   PCG, Threefry and others), number theory, floating-point notes of Kahan and Goldberg, and data formats. Each has a
-  `paper.json` listing its source, a negative control and what is not checked. Output is identical to a native x86-64 build;
-  Tier-3 only, not in CI. Sources differ in strength, and some compare only a few values: see
-  `docs/verify/papers/README.md`.
+  `paper.json` listing its source, a negative control and what is not checked. Compares the ARM64 output against both the paper's published numbers and a native host build of the same reference code; Tier-3 only, not in CI. Sources differ in strength, and some compare only a few values: see `docs/verify/papers/README.md`.
 - Security: documented the best-effort support policy for `main` and the latest `0.10.x` patch, and recorded the evidence-based review of ten CodeQL cleartext-logging alerts. The alerts are false positives caused by a synthetic offline account response sharing a generic IPC result path with numeric guest/test diagnostics; none of the sinks logs account payloads, host credentials or network identities.
 - Repository metadata: declared Rust 1.89 as the package MSRV, added canonical repository/homepage/readme metadata, explicitly disabled crates.io publication, and corrected the README footer to point packaged downloads at GitHub Releases.
 

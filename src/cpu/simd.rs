@@ -280,7 +280,7 @@ pub fn scalar_three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32) -> 
 
 /// Rounding direction of the FP round-to-integral and FP-to-integer conversions.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Rm {
+pub(crate) enum Rm {
     Ne,
     Up,
     Down,
@@ -436,9 +436,15 @@ fn ursqrte(x: u32) -> u32 {
     rsqrt_estimate(x >> 23) << 23
 }
 
-/// (sign, biased exponent, 52-bit fraction, exponent bits, mantissa bits) of an FP32/FP64 value.
+/// (sign, biased exponent, 52-bit fraction, exponent bits, mantissa bits) of an FP16/FP32/FP64 value.
 fn fp_parts(bits: u64, esize: u32) -> (u64, i64, u64, u32, u32) {
-    let (e, m) = if esize == 32 { (8u32, 23u32) } else { (11, 52) };
+    let (e, m) = if esize == 16 {
+        (5u32, 10u32)
+    } else if esize == 32 {
+        (8u32, 23u32)
+    } else {
+        (11, 52)
+    };
     let sign = bits >> (esize - 1) & 1;
     let exp = (bits >> m & ((1 << e) - 1)) as i64;
     let frac = (bits & ((1u64 << m) - 1)) << (52 - m);
@@ -446,15 +452,21 @@ fn fp_parts(bits: u64, esize: u32) -> (u64, i64, u64, u32, u32) {
 }
 
 fn fp_pack(sign: u64, exp: i64, frac52: u64, esize: u32) -> u64 {
-    let (e, m) = if esize == 32 { (8u32, 23u32) } else { (11, 52) };
+    let (e, m) = if esize == 16 {
+        (5u32, 10u32)
+    } else if esize == 32 {
+        (8u32, 23u32)
+    } else {
+        (11, 52)
+    };
     sign << (esize - 1) | ((exp as u64) & ((1 << e) - 1)) << m | frac52 >> (52 - m)
 }
 
 /// `FRECPE` (default FPCR: round to nearest).
-fn fp_recip_estimate(bits: u64, esize: u32) -> u64 {
+pub fn fp_recip_estimate(bits: u64, esize: u32) -> u64 {
     let (sign, mut exp, mut frac, e, _m) = fp_parts(bits, esize);
     let max = (1i64 << e) - 1;
-    let quiet = if esize == 32 { 1u64 << 22 } else { 1u64 << 51 };
+    let quiet = 1u64 << (esize - e - 2);
     if exp == max && frac != 0 {
         return bits | quiet;
     }
@@ -477,7 +489,13 @@ fn fp_recip_estimate(bits: u64, esize: u32) -> u64 {
         }
     }
     let scaled = (1u32 << 8) | (frac >> 44) as u32;
-    let mut result_exp = if esize == 32 { 253 } else { 2045 } - exp;
+    let mut result_exp = if esize == 16 {
+        29
+    } else if esize == 32 {
+        253
+    } else {
+        2045
+    } - exp;
     let estimate = recip_estimate(scaled);
     let mut fraction = ((estimate & 0xFF) as u64) << 44;
     if result_exp == 0 {
@@ -490,10 +508,10 @@ fn fp_recip_estimate(bits: u64, esize: u32) -> u64 {
 }
 
 /// `FRSQRTE` (default FPCR).
-fn fp_rsqrt_estimate(bits: u64, esize: u32) -> u64 {
+pub fn fp_rsqrt_estimate(bits: u64, esize: u32) -> u64 {
     let (sign, mut exp, mut frac, e, _m) = fp_parts(bits, esize);
     let max = (1i64 << e) - 1;
-    let quiet = if esize == 32 { 1u64 << 22 } else { 1u64 << 51 };
+    let quiet = 1u64 << (esize - e - 2);
     if exp == max && frac != 0 {
         return bits | quiet;
     }
@@ -501,7 +519,9 @@ fn fp_rsqrt_estimate(bits: u64, esize: u32) -> u64 {
         return fp_pack(sign, max, 0, esize);
     }
     if sign == 1 {
-        return if esize == 32 {
+        return if esize == 16 {
+            0x7e00
+        } else if esize == 32 {
             0x7fc0_0000
         } else {
             0x7ff8_0000_0000_0000
@@ -522,7 +542,14 @@ fn fp_rsqrt_estimate(bits: u64, esize: u32) -> u64 {
     } else {
         (1u32 << 7) | (frac >> 45) as u32
     };
-    let result_exp = (if esize == 32 { 380 } else { 3068 } - exp).div_euclid(2);
+    let result_exp = (if esize == 16 {
+        44
+    } else if esize == 32 {
+        380
+    } else {
+        3068
+    } - exp)
+        .div_euclid(2);
     let estimate = rsqrt_estimate(scaled);
     fp_pack(0, result_exp, ((estimate & 0xFF) as u64) << 44, esize)
 }
@@ -1352,10 +1379,16 @@ fn zero_compare_flags(op: SimdFpOp2, n: u128, double: bool, q: bool) {
 /// NaN is IOC for all of them; the FRINT32/64 forms are also IOC for a NaN, infinity or out-of-range result; the X
 /// forms are IXC when the rounded value differs; FRECPE/FRSQRTE of zero is DZC, FRSQRTE of a negative is IOC, and
 /// FRECPE of a tiny input overflows (OFC+IXC) while a large one flushes to zero under FZ (UFC).
-fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: bool) {
+pub(crate) fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: bool) {
     use super::softfp::{DZC, IOC, IXC, OFC, UFC, raise};
     use SimdFpOp2::*;
-    let esize = if f == super::softfp::F32 { 32 } else { 64 };
+    let esize = if f == super::softfp::F16 {
+        16
+    } else if f == super::softfp::F32 {
+        32
+    } else {
+        64
+    };
     let n32_64 = matches!(op, Frint32z | Frint32x | Frint64z | Frint64x);
     if f.is_snan(a) || (f.is_nan(a) && n32_64) {
         raise(IOC);
@@ -1372,7 +1405,16 @@ fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: 
                 let (_, exp, frac, _, _) = fp_parts(a, esize);
                 if exp == 0 && frac >> 50 == 0 {
                     raise(OFC | IXC);
-                } else if fz && exp >= if esize == 32 { 253 } else { 2045 } {
+                } else if fz
+                    && exp
+                        >= if esize == 16 {
+                            29
+                        } else if esize == 32 {
+                            253
+                        } else {
+                            2045
+                        }
+                {
                     raise(UFC);
                 }
             }
