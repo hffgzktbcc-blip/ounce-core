@@ -2,7 +2,7 @@
 
 Notable changes to ounce-core. Evidence for each release lives under `docs/releases/`.
 
-## Unreleased
+## 0.12.0 — 2026-11-24 (released)
 
 - Added: `run-elf -- <elf> [args]`, so `[target.aarch64-unknown-linux-musl] runner = "ounce-core run-elf --"` runs `cargo test` binaries (`#557`). The Quick Start and README give the `RUSTFLAGS` macOS needs (`-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=static`) and a recorded run of a three-test crate on an Apple M3.
 - Added (Linux syscalls, `#557`): `ppoll`, deterministic `getrandom` (fixed stream, the default), `read`/`readv`/`pread64`/`pwrite64`/`lseek`/`fstat`/`newfstatat` (including `AT_EMPTY_PATH`)/`unlinkat`/`ftruncate`/`fcntl`; a bounded in-memory scratch file system at `/tmp` and `/var/tmp` (64 files, 16 MiB per file, 64 MiB total), `/dev/null` and `/proc/self/auxv`; opt-in `--stdin` and `--stdin=<path>` (descriptor 0 is end-of-file by default; 64 MiB limit); `AT_HWCAP` is `0x20093` (FP, ASIMD, PMULL, CRC32, SHA3), known-answer verified on the interpreter, Tier-3 and Tier-4. The bad-syscall test fixture now uses `bpf` (280).
