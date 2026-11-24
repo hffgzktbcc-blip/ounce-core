@@ -92,11 +92,11 @@ def done_search(args):
         number = query.lstrip('#')
         needle = f'#{number}' if number.isdigit() else query
         pattern = rf'#{number}\b' if number.isdigit() else re.escape(query)
-        print(f'== {query}  (searching {ref}, CHANGELOG, PLAN, roadmap, release notes; local data only)')
+        print(f'== {query}  (searching {ref}, CHANGELOG, PLAN, release notes; local data only)')
         log = merged_commits_citing(ref, needle, pattern)
         if log:
             print('Merged commits:\n' + log)
-        for name in ['CHANGELOG.md', 'docs/PLAN.md', 'docs/history/PLAN-COMPLETED.md', 'docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md',
+        for name in ['CHANGELOG.md', 'docs/PLAN.md', 'docs/history/PLAN-COMPLETED.md',
                      'docs/roadmap/milestones.json', *sorted(str(p) for p in Path('docs/releases').glob('*.md'))]:
             path = Path(name)
             if not path.is_file():
@@ -132,7 +132,7 @@ def next_task(args):
         for detail in selected['details']:
             print(f'  {detail}')
     else:
-        print('\nNo ready task in docs/PLAN.md. Other open work lives in open PRs and issues and in docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md; check scripts/done.sh before picking anything. Do not repeat completed work.')
+        print('\nNo ready task in docs/PLAN.md. Other open work lives in open PRs and issues on GitHub; check scripts/done.sh before picking anything. Do not repeat completed work.')
     merged = recent_merged(8)
     if merged:
         print(f'\nRecently merged ({main_ref()}; run `git fetch` first for the latest). Check before starting work:')
