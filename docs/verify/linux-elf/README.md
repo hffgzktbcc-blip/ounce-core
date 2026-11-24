@@ -4,7 +4,8 @@ Vision step 1: run **static AArch64 Linux ELF executables** on the Tier-3 or Tie
 program cannot run, say exactly why.
 
 ```
-ounce-core run-elf <elf> [--cpu=tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [-- guest args...]
+ounce-core run-elf <elf> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [-- guest args...]
+ounce-core run-elf -- <elf> [guest args...]      # form used as a cargo test runner
 ```
 
 Exit status is the guest's `exit_group` code (low 8 bits). Failures use: 70 unimplemented syscall or
@@ -17,11 +18,13 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
 
 - ELF64 little-endian AArch64 `ET_EXEC`; `PT_LOAD` mapping; stack with argc, argv, empty envp, auxv
   (PHDR, PHENT, PHNUM, PAGESZ, ENTRY, UID/GID, HWCAP, CLKTCK, SECURE, RANDOM, PLATFORM, EXECFN).
+  `AT_HWCAP` is `0x20093` (FP, ASIMD, PMULL, CRC32, SHA3), known-answer tested on the interpreter, Tier-3 and Tier-4.
 - Syscalls (via `SVC #0`, number in x8): `write`, `writev` (fd 1 and 2 only), `exit`, `exit_group`,
   `brk`, `mmap` (anonymous only, including sparse reservations and `MAP_FIXED`), `mprotect`, `munmap`, `mremap` (anonymous mappings; shrink in place, grow only with `MREMAP_MAYMOVE`), `ioctl` (returns
   ENOTTY), `set_tid_address`, `rt_sigaction`/`rt_sigprocmask`, `sigaltstack`, `rt_sigreturn`, `getpid`/`gettid`,
-  `getrlimit`/`prlimit64` (read-only stack limit),
-  `clock_gettime` (realtime, monotonic), `uname`, `openat`/`readlinkat` (always ENOENT),
+  `getrlimit`/`prlimit64` (read-only stack limit), `ppoll`, `getrandom` (fixed deterministic stream),
+  `read`/`readv`/`pread64`/`pwrite64`/`lseek`/`fstat`/`newfstatat` (also `AT_EMPTY_PATH`)/`unlinkat`/`ftruncate`/`fcntl`,
+  `clock_gettime` (realtime, monotonic), `uname`, `openat` on a bounded in-memory scratch file system (`/tmp`, `/var/tmp`, `/dev/null`, `/proc/self/auxv`; other paths ENOENT), `readlinkat` (always ENOENT),
   `sched_getaffinity` (one CPU: an 8-byte mask with CPU 0 set).
 - Test programs: `tests/linux-elf/src/*.c`, built by `tests/linux-elf/src/build.sh` (clang plus LLD,
   or rustup's `rust-lld`) into `tests/linux-elf/bin/` (each ELF is about 1-2 KB). Tests run each
@@ -30,11 +33,11 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
 ## Honest limits
 
 - **Libc-linked programs verified so far** (LZ4, xxHash, cJSON, zlib, wasm3, [PROGRAMS.md](PROGRAMS.md), and [HIGH-STAR-OPT-MATRIX.md](HIGH-STAR-OPT-MATRIX.md)). Other static glibc/musl binaries may stop early:
-  they call `mprotect`, `getrandom`, `prlimit64`, `rseq`, `futex`, `set_robust_list`, `readlinkat`
-  paths, etc. Each stops with a diagnosis naming the syscall; none is implemented yet.
+  they call `futex`, `rseq`, `set_robust_list` or other syscalls that are not implemented.
+  Each stops with a diagnosis naming the syscall. See [LIMITS.md](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026).
 - Dynamic executables, `ET_DYN`/static-PIE, 32-bit and big-endian ELF are rejected. `PT_TLS` is not
   set up (libc startup is expected to do it).
-- No files, `read`, sockets, threads, `clone`, `execve`, asynchronous signals, or `fork`. Synchronous memory faults can deliver a guest
+- No host files (only the in-memory scratch area above; limits in LIMITS.md), no sockets, threads, `clone`, `execve`, asynchronous signals, or `fork`. Synchronous memory faults can deliver a guest
   SIGSEGV handler (including an alternate stack and `rt_sigreturn`).
 - Segment pages are RW or RWX only: read-only data is not write-protected, and no W^X.
 - Accessible memory is allocated eagerly: `brk` growth is capped at 512 MiB, one accessible

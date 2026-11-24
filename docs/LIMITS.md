@@ -8,7 +8,7 @@ per-harness README, the README wins.
 |---|---|
 | Native execution output is byte-identical to the host reference | Native runs the guest on the host CPU. On an ARM64 host it validates the harness, toolchain and loader only, **not the emulator**. Tier-3 and Tier-4 are the evidence for the emulator. On an x86 host native is unavailable. |
 | Tier-3 and Tier-4 are byte-identical to the host reference on a harness | Agreement on the listed inputs only. It says nothing about inputs not in the harness, and nothing about instructions the harness never executes. Many vector, floating-point and system instructions are undecoded or untested. |
-| QC-flag harnesses match the host (`qc-flag/saturating-shifts`: 5700 lines, 5684 with qc=1) | Most cases saturate (5684 of 5700), so the "QC clear" path and boundary cases just below saturation are barely exercised. A model that always set QC would pass almost all of them. Trap enables and the cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are not modelled, as the [qc-flag README](verify/qc-flag/README.md) states. FPCR rounding mode, flush-to-zero and default-NaN are modelled for FP arithmetic, FMA, sqrt, FRINT*, single/double FCVT, int conversions and compares (not half precision), and match a qemu-user AArch64 reference on the fp-edge corpus at all nine FPCR values; real-hardware agreement is checked only by the `fp-edge` CI job. The compiled Tier-4 form defers to the interpreter while any of those FPCR fields is set. |
+| QC-flag harnesses match the host (`qc-flag/saturating-shifts`: 5700 lines, 5684 with qc=1) | Most cases saturate (5684 of 5700), so the "QC clear" path and boundary cases just below saturation are barely exercised. A model that always set QC would pass almost all of them. Trap enables and the cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are not modelled, as the [qc-flag README](verify/qc-flag/README.md) states. FPCR rounding mode, flush-to-zero and default-NaN are modelled for FP arithmetic, FMA, sqrt, FRINT*, single/double FCVT, int conversions and compares, and scalar half precision (#553, #554, #558), and match a qemu-user AArch64 reference on the fp-edge corpus at all nine FPCR values; real-hardware agreement is checked only by the `fp-edge` CI job. The compiled Tier-4 form defers to the interpreter while any of those FPCR fields is set. |
 | Everything was compared against real ARM64 hardware | Committed references were recorded on Apple Silicon macOS arm64. The differential workflow also runs on Linux ARM64; [documented host differences](verify/README.md#hardware-differences) are retained rather than treated as agreement. This does not cover every ARM64 core or compiler. No outside machine has reproduced it yet ([REPRODUCE.md](REPRODUCE.md)). |
 | Harness inputs are random plus edge values | Inputs are a finite fixed set (for example 300 or 400 operand sets per form). They are not exhaustive and not a proof of instruction-level correctness. The [single-instruction fuzzer](verify/insn-fuzzer/README.md) exists, with seeded biased inputs; it does not cover all instructions, FPCR modes or multi-instruction interactions. |
 | Scalar FMAX/FMIN/FMAXNM/FMINNM NaN handling matches ([fmaxnm-nan](verify/fmaxnm-nan/README.md)) | Covers 15 single and 14 double edge values through the scalar forms, compared as output only. FMAX/FMIN already matched before the FMAXNM/FMINNM fix, but the scalar signalling-NaN ordering of FMAX/FMIN is not checked beyond those pairs, and the vector forms are a separate harness. Treat scalar SNaN ordering as unchecked outside the listed edge values. |
@@ -18,6 +18,18 @@ per-harness README, the README wins.
 | Hashes and evidence are retained | A matching hash shows the bytes match the declared digest, not independent provenance or a reproducible build. |
 | Loader fuzz run found no panics | 300 inputs. A small run, not a security audit. |
 | Speed | None claimed. The interpreter runs at roughly 20 million instructions per second. |
+
+## Known gaps in what the Linux ELF runner and CPU models execute (24 Nov 2026)
+
+These are verified against the source at `main` (14b3c4d) and the [Big Tech run](verify/bigtech-2026-11-23.md):
+
+- **No `FEAT_AES`, `FEAT_SHA1` or `FEAT_SHA2`.** Programs that use them stop or skip. In the s2n-bignum run, 13 AES-dependent tests were skipped, not passed.
+- **`AT_HWCAP` is `0x20093`** (FP, ASIMD, PMULL, CRC32, SHA3). `HWCAP_ATOMICS` is not advertised, although `FEAT_LSE` atomics (`LD<op>`, `SWP`, `CAS`, `CASP`, `LDAPR`) execute correctly since #559. Programs that probe `HWCAP` will not select an LSE path.
+- **`LDXP` and `STXP` are unimplemented** and stop the run with an unimplemented-instruction diagnosis (before #559 they ran as wrong plain loads and stores).
+- **`futex` is not implemented**, and there are no threads or `clone`: run single-threaded guests only.
+- **Files are a bounded in-memory scratch area**: `/tmp` and `/var/tmp` (at most 64 files and 64 open descriptors, 16 MiB per file, 64 MiB in total), plus `/dev/null` and `/proc/self/auxv`. Other paths fail with `ENOENT`. Nothing reaches the host file system. Guest `getrandom` is a fixed stream, so a program that needs real entropy sees the same bytes every run.
+- **Standard input is empty** unless you pass `--stdin` or `--stdin=<path>` (64 MiB limit).
+- **Static, non-PIE only.** `ET_DYN` and static-PIE are rejected.
 
 Not established at all: running arbitrary ARM64 or Linux applications, and automatic root-cause finding.
 
