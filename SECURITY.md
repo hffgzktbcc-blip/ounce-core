@@ -6,14 +6,15 @@ Ounce-Core runs untrusted guest code. Anything that lets a guest program read or
 
 ## Supported versions
 
-Security fixes are best effort and land on `main`. When a fix warrants a release,
-the newest `0.10.x` patch supersedes earlier patches; there are no long-term or
-parallel security-backport branches.
+Security fixes are best effort and land on `main`. Only the newest patch of the newest
+minor release is supported. When a fix warrants a release, it ships as the next patch
+of that minor (or in the next minor); there are no long-term or parallel
+security-backport branches. See [versioning and releases](CONTRIBUTING.md#versioning-and-releases).
 
 | Version | Security status |
 | --- | --- |
 | `main` | Best-effort fixes |
-| Latest `0.10.x` patch | Best-effort until superseded |
+| [Latest release](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest) (newest patch of the newest minor) | Best-effort until superseded |
 | Earlier releases | Not supported |
 
 The current static-analysis alert review is recorded in
