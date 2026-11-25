@@ -1108,3 +1108,180 @@ fn report_json_file_leaves_guest_output_on_stdout() {
     assert_eq!(report["schema"], "ounce.run.v1");
     let _ = std::fs::remove_file(&path);
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Engine selection: one name parser everywhere, and a requested engine that cannot run is never silent.
+
+const ELF_EXIT_0: [u32; 3] = [0xD280_0BA8, 0xD280_0000, 0xD400_0001]; // movz x8,#93; movz x0,#0; svc #0
+const NRO_EXIT: [u32; 1] = [SVC_EXIT_PROCESS];
+
+/// Runs `run-nro` and `run-elf` with `--cpu=<value>` and returns both outcomes (headless, deterministic).
+fn run_both_with_cpu(tag: &str, value: &str) -> [(&'static str, Outcome); 2] {
+    let flag = format!("--cpu={value}");
+    [
+        (
+            "run-nro",
+            run_bytes(
+                &format!("{tag}n"),
+                "run-nro",
+                &nro(&NRO_EXIT),
+                &["--present=headless", "--deterministic", &flag],
+                &[],
+            ),
+        ),
+        (
+            "run-elf",
+            run_bytes(
+                &format!("{tag}e"),
+                "run-elf",
+                &elf(&ELF_EXIT_0),
+                &["--deterministic", &flag],
+                &[],
+            ),
+        ),
+    ]
+}
+
+#[test]
+fn unknown_engine_name_is_a_usage_error_everywhere() {
+    for (cmd, out) in run_both_with_cpu("badcpu", "bogus") {
+        assert_eq!(out.status, 2, "{cmd} --cpu=bogus must be a usage error: {}", out.stderr);
+        assert!(out.report.is_none(), "{cmd}: nothing ran, so there is no report");
+        for name in ["interpreter", "tier3", "tier4", "native"] {
+            assert!(out.stderr.contains(name), "{cmd}: error lists '{name}': {}", out.stderr);
+        }
+    }
+    // `run` and OUNCE_CPU take the same parser.
+    let dir = scratch("badcpu_run");
+    let file = dir.join("p.nro");
+    std::fs::write(&file, nro(&NRO_EXIT)).unwrap();
+    let out = command(&["run", file.to_str().unwrap(), "--present=headless", "--cpu=interp3"]);
+    assert_eq!(
+        code(&out),
+        2,
+        "run --cpu=interp3: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out = Command::new(BIN)
+        .args(["run-nro", file.to_str().unwrap(), "--present=headless"])
+        .env("OUNCE_CPU", "bogus")
+        .output()
+        .unwrap();
+    assert_eq!(
+        code(&out),
+        2,
+        "OUNCE_CPU=bogus: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // The block-engine commands that name engines reject the same unknown values.
+    let out = command(&["fuzz-replay", "--engine", "bogus", "-"]);
+    assert_eq!(code(&out), 2, "fuzz-replay --engine bogus");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("tier3"));
+    let out = command(&["diverge", file.to_str().unwrap(), "--engine", "bogus"]);
+    assert_eq!(code(&out), 2, "diverge --engine bogus");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn engine_names_and_aliases_are_the_same_for_run_run_elf_and_fuzz_replay() {
+    for (value, tier) in [
+        ("interp", "interpreter"),
+        ("Interpreter", "interpreter"),
+        ("tier1", "interpreter"),
+        ("3", "tier3"),
+    ] {
+        for (cmd, out) in run_both_with_cpu("alias", value) {
+            assert_eq!(out.status, 0, "{cmd} --cpu={value}: {}", out.stderr);
+            let report = out.report.expect("report");
+            assert_eq!(report["tier"], tier, "{cmd} --cpu={value}");
+            assert_eq!(report["silent_fallback"], false, "{cmd} --cpu={value}");
+        }
+    }
+    let dir = scratch("alias_fuzz");
+    let trace = dir.join("t.trace");
+    std::fs::write(&trace, "U 00000000\n").unwrap();
+    for args in [
+        vec!["--engine", "interp"],
+        vec!["--engine", "interpreter"],
+        vec!["--cpu=interp"],
+        vec!["--cpu=tier3"],
+    ] {
+        let out = Command::new(BIN)
+            .arg("fuzz-replay")
+            .args(&args)
+            .arg(&trace)
+            .output()
+            .unwrap();
+        assert_ne!(
+            code(&out),
+            2,
+            "fuzz-replay {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    let out = command(&["fuzz-replay", "--cpu=native", trace.to_str().unwrap()]);
+    assert_eq!(code(&out), 2, "native is not a block engine");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A requested engine that did not run: stderr says so, `tier` names what ran, `silent_fallback` is true.
+fn assert_visible_fallback(cmd: &str, out: &Outcome, requested: &str, expected_ran: &str) {
+    assert_eq!(
+        out.status, 0,
+        "{cmd}: the program itself exited cleanly: {}",
+        out.stderr
+    );
+    let report = out.report.as_ref().expect("report");
+    assert_eq!(report["tier"], expected_ran, "{cmd}: tier says what ran");
+    assert_eq!(report["silent_fallback"], true, "{cmd}: silent_fallback is true");
+    assert!(
+        out.stderr.contains("[Tier-4]") || out.stderr.contains("[CPU]"),
+        "{cmd} --cpu={requested}: a one-line stderr warning is printed: {}",
+        out.stderr
+    );
+}
+
+#[cfg(not(feature = "native-jit"))]
+#[test]
+fn tier4_without_native_jit_runs_tier3_visibly() {
+    for (cmd, out) in run_both_with_cpu("t4", "tier4") {
+        assert_visible_fallback(cmd, &out, "tier4", "tier3");
+        assert!(
+            out.stderr.contains("--features native-jit"),
+            "{cmd}: names the rebuild command"
+        );
+    }
+}
+
+#[cfg(feature = "native-jit")]
+#[test]
+fn tier4_report_matches_what_ran() {
+    for (cmd, out) in run_both_with_cpu("t4", "tier4") {
+        let report = out.report.as_ref().expect("report");
+        let ran = report["tier"].as_str().unwrap();
+        assert_eq!(report["silent_fallback"], ran != "tier4", "{cmd}");
+        if ran != "tier4" {
+            assert_visible_fallback(cmd, &out, "tier4", ran);
+        }
+    }
+}
+
+#[cfg(not(feature = "nce"))]
+#[test]
+fn native_without_nce_runs_the_interpreter_visibly() {
+    let out = run_nro_bytes("nat", &NRO_EXIT, &["--cpu=native"], &[]);
+    assert_visible_fallback("run-nro", &out, "native", "interpreter");
+    assert!(
+        out.stderr.contains("--features nce"),
+        "names the rebuild command: {}",
+        out.stderr
+    );
+    // run-elf has no native engine at all: refused as a load error (already visible, nothing else runs).
+    let out = run_bytes("natelf", "run-elf", &elf(&ELF_EXIT_0), &["--cpu=native"], &[]);
+    assert_ne!(out.status, 0, "run-elf --cpu=native must not run anything");
+    assert!(
+        out.stderr.contains("interpreter") && out.stderr.contains("tier3") && out.stderr.contains("tier4"),
+        "{}",
+        out.stderr
+    );
+}

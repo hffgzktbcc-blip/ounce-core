@@ -132,13 +132,22 @@ pub enum Engine {
 }
 
 impl Engine {
-    fn parse(s: &str) -> Option<Self> {
-        match s {
-            "interp" => Some(Self::Interp),
-            "tier3" => Some(Self::Tier3),
-            "tier4" => Some(Self::Tier4),
-            _ => None,
+    /// Same names and aliases as `--cpu=` ([`crate::cpu::CpuTier::parse_arg`]); `native` runs whole programs, not a
+    /// two-word block, so it is refused here.
+    fn parse_arg(s: &str) -> Result<Self, String> {
+        match crate::cpu::CpuTier::parse_arg(s)? {
+            crate::cpu::CpuTier::Interpreter => Ok(Self::Interp),
+            crate::cpu::CpuTier::Tier3 => Ok(Self::Tier3),
+            crate::cpu::CpuTier::Tier4 => Ok(Self::Tier4),
+            crate::cpu::CpuTier::Native => Err(
+                "fuzz-replay runs single words on a block engine; native is not one (use interpreter, tier3 or tier4)"
+                    .into(),
+            ),
         }
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        Self::parse_arg(s).ok()
     }
 }
 
@@ -500,7 +509,7 @@ pub fn replay_bundle(args: &[String]) -> i32 {
 fn replay_bundle_inner(args: &[String]) -> Result<(serde_json::Value, bool), String> {
     use sha2::{Digest, Sha256};
     if args.len() != 1 && !(args.len() == 3 && args[1] == "--engine") {
-        return Err("usage: replay-instruction BUNDLE [--engine interp|tier3|tier4]".into());
+        return Err("usage: replay-instruction BUNDLE [--engine interpreter|tier3|tier4]".into());
     }
     let dir = std::path::Path::new(&args[0]);
     let read = |name: &str| -> Result<Vec<u8>, String> {
@@ -569,7 +578,7 @@ fn replay_bundle_inner(args: &[String]) -> Result<(serde_json::Value, bool), Str
         .and_then(Engine::parse)
         .ok_or("invalid recorded engine")?;
     let engine = if args.len() == 3 {
-        Engine::parse(&args[2]).ok_or("unknown replay engine")?
+        Engine::parse_arg(&args[2])?
     } else {
         recorded_engine
     };
@@ -654,7 +663,17 @@ pub fn run(args: &[String]) -> i32 {
     let (mut f_exec, mut f_match) = (0u64, 0u64);
     let mut input = None;
     let mut results_path: Option<std::path::PathBuf> = None;
-    let mut engine = Engine::Interp;
+    // `--cpu=` / `OUNCE_CPU` pick the engine too (`--engine` overrides them).
+    let mut engine = match crate::cpu::CpuTier::explicit() {
+        None => Engine::Interp,
+        Some(tier) => match Engine::parse_arg(tier.report_label()) {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("fuzz-replay --cpu: {e}");
+                return 2;
+            }
+        },
+    };
     let mut ee = false;
     let mut seed = 1u64;
     let mut count = 20_000u64;
@@ -690,10 +709,10 @@ pub fn run(args: &[String]) -> i32 {
             },
             "--list-unimplemented" => list_unimpl = true,
             "--top" => top = it.next().and_then(|v| v.parse().ok()).unwrap_or(60),
-            "--engine" => match it.next().and_then(|v| Engine::parse(v)) {
-                Some(e) => engine = e,
-                None => {
-                    eprintln!("--engine takes interp, tier3 or tier4");
+            "--engine" => match Engine::parse_arg(it.next().map(String::as_str).unwrap_or("")) {
+                Ok(e) => engine = e,
+                Err(e) => {
+                    eprintln!("fuzz-replay --engine: {e}");
                     return 2;
                 }
             },
@@ -887,7 +906,7 @@ pub fn run(args: &[String]) -> i32 {
     println!("--- fuzz-replay summary ---");
     println!("engine:                         {engine:?}");
     if engine == Engine::Tier4 {
-        println!("words with native Tier-4 insns: {native_cases}");
+        println!("host replay: words where Tier-4 ran >=1 native insn (the svc wrapper counts): {native_cases}");
     }
     println!(
         "host executed (not SIGILL):     {}",
@@ -1189,7 +1208,7 @@ pub fn run_engines(seed: u64, count: u64, show: usize) -> i32 {
     if tier4 {
         println!("  tier4 vs interp MISMATCH:     {}", mism[1]);
         println!(
-            "  words Tier-4 ran natively:    {native_words} of {tier4_n} (the rest fell back to Tier-3/interpreter)"
+            "  engine-vs-engine: words where Tier-4 ran >=1 native insn (the svc wrapper counts): {native_words} of {tier4_n} (the rest fell back to Tier-3/interpreter)"
         );
     }
     if !by_class.is_empty() {
