@@ -48,13 +48,31 @@ Build, run the hello fixture, and write an `ounce.run.v1` report: [docs/QUICKSTA
 
 **1. In your browser.** Step through ARM64 code one instruction at a time in the [playground](https://hffgzktbcc-blip.github.io/ounce-core/playground/). Nothing to install.
 
-**2. On your machine.** Download a prebuilt binary from [Releases](https://github.com/hffgzktbcc-blip/ounce-core/releases) or build from source (pure-Rust headless default on Rust 1.89+ with zero C system libraries; pass `--features host-io` only if desktop audio/controller input is wanted, which needs `libasound2-dev libudev-dev` on Debian/Ubuntu; `--workspace` / `--features native-jit` requires current stable Rust):
+**2. On your machine.** Download a prebuilt binary from [Releases](https://github.com/hffgzktbcc-blip/ounce-core/releases) (from the next release, v0.13.0, downloads include all three engines: Interpreter, Tier-3 and Tier-4; v0.12.0 downloads do not include Tier-4) or build from source (pure-Rust headless default on Rust 1.89+ with zero C system libraries; pass `--features host-io` only if desktop audio/controller input is wanted, which needs `libasound2-dev libudev-dev` on Debian/Ubuntu; `--workspace` / `--features native-jit` requires current stable Rust).
+
+Release downloads up to v0.12.0 and default `cargo install --git` builds include the Interpreter and Tier-3 engines. On these builds, requesting `--cpu=tier4` prints `Not available: rebuild with --features native-jit; running Tier-3` and falls back to Tier-3. To get the Tier-4 JIT engine from source, build with `--features native-jit`:
 
 ```bash
+# Install with Tier-4 JIT support:
+cargo install --git https://github.com/hffgzktbcc-blip/ounce-core --features native-jit
+
+# Or install default pure-Rust headless binary (Interpreter + Tier-3):
 cargo install --git https://github.com/hffgzktbcc-blip/ounce-core
 ounce-core run-elf path/to/program.elf --present=headless --report-json=-
 # Or from a local checkout, run an unencrypted NRO fixture:
 cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture
+```
+
+Verify downloaded release assets with their SHA-256 digests:
+
+```bash
+# Verify a single download:
+shasum -a 256 -c ounce-core-macos-arm64.tar.gz.sha256    # macOS
+sha256sum -c ounce-core-linux-arm64.tar.gz.sha256        # Linux
+
+# Or verify against the combined checksum file:
+shasum -a 256 --ignore-missing -c SHA256SUMS             # macOS
+sha256sum --ignore-missing -c SHA256SUMS                 # Linux
 ```
 
 `run-elf` executes a static Linux ARM64 ELF and emits pure `ounce.run.v1` JSON to `stdout` (diagnostics and the guest's own output on `stderr`) with `--report-json=-`; the `hello.nro` fixture prints `result=0x00000EEE`. The default engine is Tier-3 (`--report-json=run.json` or `OUNCE_REPORT_JSON` also writes to a file). To run your Rust tests on aarch64 Linux through Ounce-Core, see [`cargo test` as a runner](#run-cargo-test-through-ounce-core) below. To check your own program against a host build, see [Add a program](docs/ADD_A_PROGRAM.md) or the [Community Verification Guide](docs/COMMUNITY_VERIFICATION_GUIDE.md). To find where a run first goes wrong, see the [diagnosis guide](docs/DIAGNOSIS_CLI.md).
@@ -85,7 +103,7 @@ Plain `cargo test` runs without `--test-threads=1`: libtest attempts to spawn a 
 - [Quick start](docs/QUICKSTART.md): build, hello fixture, `--report-json`
 - [Details](docs/DETAILS.md): subsystem status, how the proof works, test harness, full commands, roadmap, repository layout
 - [Reproduce the results](docs/REPRODUCE.md), the [Big Tech library runs](docs/verify/bigtech-2026-11-23.md) and [what they do not show](docs/LIMITS.md)
-- [Research paper](site/research.html) and [vision](docs/VISION.md)
+- [Research paper](https://hffgzktbcc-blip.github.io/ounce-core/research.html) and [vision](docs/VISION.md)
 - [Mac app](docs/MAC_APP.md) and [interactive lab](docs/INTERACTIVE_LAB.md)
 - [Sources, provenance and legal notice](docs/DETAILS.md#responsible-research-and-legal)
 

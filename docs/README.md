@@ -70,5 +70,6 @@ Use this checklist when changing the README, website, quick starts, status pages
 4. **Separate shipped from planned.** Check live tags, merged PRs, CI and [the latest release notes](releases/v0.10.0.md) before saying "unreleased", "not yet merged" or "coming soon". Keep genuinely draft contracts clearly marked draft.
 5. **Update the source, not just the rendered copy.** The roadmap table in [DETAILS.md](DETAILS.md) is generated from [roadmap/milestones.json](roadmap/milestones.json). Change both consistently through `scripts/render_roadmap.py` or its source; do not hand-edit a generated claim alone.
 6. **Preserve evidence and limitations.** Simplify sentences, not test results. Keep legal notices, licence attribution, source links, dates, unsupported features and failure reports intact.
+7. **Release notes must use absolute links.** Files under `docs/releases/` are published as GitHub Release bodies by `release.yml`, where relative links resolve to 404s. Always use full `https://github.com/hffgzktbcc-blip/ounce-core/blob/vX.Y.Z/...` URLs.
 
 Before proposing a documentation-only PR, run `python3 scripts/check_links.py`, `python3 scripts/check_pins.py`, and inspect the diff for outdated counts or commands that no longer match their scripts. These checks catch link and version mistakes, not every inaccurate claim.

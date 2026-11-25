@@ -6,6 +6,18 @@ Run one homebrew program and, if you want a machine-readable result, write an
 
 You need Rust 1.89 or newer (edition 2024). Default headless builds require zero C system libraries; pass `--features host-io` only if you want desktop audio output and physical controller input. Only that opt-in feature needs `libasound2-dev libudev-dev` on Debian or Ubuntu.
 
+If downloading a prebuilt archive from [Releases](https://github.com/hffgzktbcc-blip/ounce-core/releases) instead of building from source, verify its SHA-256 checksum first:
+
+```sh
+# Single asset verification:
+shasum -a 256 -c ounce-core-macos-arm64.tar.gz.sha256    # macOS
+sha256sum -c ounce-core-linux-arm64.tar.gz.sha256        # Linux
+
+# Combined checksums (checks available files, ignoring missing ones):
+shasum -a 256 --ignore-missing -c SHA256SUMS             # macOS
+sha256sum --ignore-missing -c SHA256SUMS                 # Linux
+```
+
 ```sh
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
@@ -17,7 +29,7 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture --pres
 Tier-3. `--cpu=interpreter` is one instruction at a time.
 Guest arguments that start with `-` go after `--`, for example `... hello.nro -- --verbose`; before `--`,
 an unknown option is refused with exit status 2 rather than dropped (`ounce-core run-nro --help`).
-`--cpu=tier4` needs `cargo build --release --features native-jit`.
+`--cpu=tier4` works in release downloads from v0.13.0 on; v0.12.0 downloads and source builds without the feature print "Not available: rebuild with --features native-jit; running Tier-3", so use `cargo build --release --features native-jit` there. On macOS the binary is ad-hoc signed by the linker with no hardened runtime, so Tier-4 needs no entitlement; if you re-sign it with `codesign --options runtime`, add `com.apple.security.cs.allow-jit`.
 `--cpu=native` runs a homebrew NRO on an AArch64 host and needs
 `--features nce`; without that feature the run stays on the interpreter and
 says so.
@@ -100,7 +112,7 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 This shows that small test binaries run; it does not show that every crate's tests do. Tests
-that spawn threads or need AES (`FEAT_AES` is not implemented) or other unsupported system
+that spawn threads or need other unsupported instructions or system
 calls stop with a diagnosis ([limits](LIMITS.md)).
 
 ## Where the other tools live

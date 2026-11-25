@@ -1111,7 +1111,7 @@ impl Lowerer {
 
             // FEAT_SHA3 uses the decoded Tier-3 implementation on every host. Returning
             // before emitting IR preserves all source registers when Vd aliases a source.
-            Instruction::Sha3 { .. } => return Err(()),
+            Instruction::Sha3 { .. } | Instruction::Crypto { .. } => return Err(()),
 
             // System registers, exclusives, and untranslated encodings stay on Tier-3.
             _ => return Err(()),

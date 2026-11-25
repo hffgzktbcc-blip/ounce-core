@@ -22,7 +22,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 VERIFY = REPO / "docs" / "verify"
-MAKEFILE = "/opt/devkitpro/examples/switch/templates/application/Makefile"
+MAKEFILE = os.path.join(os.environ.get("DEVKITPRO", "/opt/devkitpro"), "examples/switch/templates/application/Makefile")
 
 
 def run(cmd, **kw):
@@ -167,7 +167,9 @@ def build_host(h, d):
 
 
 def build_nro(h, d, env):
-    shutil.copy(MAKEFILE, d / "Makefile")
+    template = env.get("DEVKITPRO", os.environ.get("DEVKITPRO", "/opt/devkitpro"))
+    mf_path = Path(template) / "examples/switch/templates/application/Makefile"
+    shutil.copy(mf_path if mf_path.exists() else MAKEFILE, d / "Makefile")
     mk = (d / "Makefile").read_text()
     mk = mk.replace("TARGET\t\t:=\t$(notdir $(CURDIR))", f"TARGET := {h['name']}")
     mk = mk.replace("SOURCES\t\t:=\tsource", "SOURCES := .")
@@ -217,6 +219,20 @@ def judge(row, name, same, h, host):
         return False
     row["checks"][name] = "DIFFERENT"
     return True
+
+
+def format_summary(report, failed):
+    """Format the terminal summary status line given report rows and overall failed flag."""
+    if failed:
+        return "FAILED"
+    documented = sum(len(r.get("documented", {})) for r in report)
+    skipped_engines = sum(1 for r in report if r.get("checks", {}).get("engines") == "skipped (no NRO)")
+    status = "all compared outputs identical"
+    if skipped_engines:
+        status += " (engine comparisons skipped; pass --nro to verify engines)"
+    if documented:
+        status += f" except {documented} documented host difference(s)"
+    return status
 
 
 def main():
@@ -296,6 +312,7 @@ def main():
                 continue
         if not nro:
             row["checks"]["engines"] = "skipped (no NRO)"
+            print(f"{h['name']}: " + ", ".join(f"{k}={v}" for k, v in row["checks"].items()), flush=True)
             continue
         row["nro_sha256"] = hashlib.sha256(nro.read_bytes()).hexdigest()
         for e in a.engines:
@@ -317,9 +334,7 @@ def main():
     out = {"host": platform.machine(), "host_id": host_id(), "failed": failed, "harnesses": report}
     if a.json:
         Path(a.json).write_text(json.dumps(out, indent=1) + "\n")
-    documented = sum(len(r.get("documented", {})) for r in report)
-    print("FAILED" if failed else "all compared outputs identical"
-          + (f" except {documented} documented host difference(s)" if documented else ""))
+    print(format_summary(report, failed))
     sys.exit(1 if failed else 0)
 
 
