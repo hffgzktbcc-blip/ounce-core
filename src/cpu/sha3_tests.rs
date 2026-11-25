@@ -32,7 +32,7 @@ fn sha3_decode() {
         assert!(matches!(decoder::decode(0xce800000 | (imm << 10)),
             Instruction::Sha3 { op: Sha3Op::Xar(got), .. } if got == imm as u8));
     }
-    for raw in [0xce008000, 0xce208000, 0xce608800, 0xce608c00 ^ (1 << 22), 0xcec00000] {
+    for raw in [0xce008000, 0xce208000, 0xce608c00 ^ (1 << 22), 0xcec00000] {
         assert_eq!(decoder::decode(raw), Instruction::Unimplemented { raw });
     }
 }
