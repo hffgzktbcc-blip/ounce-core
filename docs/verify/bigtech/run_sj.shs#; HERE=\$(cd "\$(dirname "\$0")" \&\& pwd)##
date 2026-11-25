@@ -1,0 +1,8 @@
+#!/bin/bash
+# Set BT (work dir holding the upstream checkouts and this directory copied to $BT/h) and ZIG (Zig 0.17.1 binary).
+BT=${BT:-/tmp/bigtech-verify}; ZIG=${ZIG:-/tmp/zig/zig}; HERE=$(cd "$(dirname "$0")" && pwd)
+S=$BT/simdjson/singleheader
+cd $BT/h
+"$ZIG" c++ -target aarch64-linux-musl -static -no-pie -std=c++20 -O2 -I$S sj_drv.cpp $S/simdjson.cpp -o sj_O2 2>&1 | grep error | head -3
+"$ZIG" c++ -target aarch64-linux-musl -static -no-pie -std=c++20 -O3 -mcpu=apple_m1 -I$S sj_drv.cpp $S/simdjson.cpp -o sj_O3 2>&1 | grep error | head -3
+ls -la sj_O2 sj_O3
