@@ -170,6 +170,7 @@ pub struct Process {
     pub(super) sigactions: [[u8; 32]; 65],
     started: Instant,
     deterministic_ticks: Option<u64>,
+    retired_instructions: u64,
     pub auxv_data: Vec<u8>,
     pub stdin_data: Vec<u8>,
     files: std::collections::BTreeMap<u32, OpenFile>,
@@ -261,6 +262,7 @@ impl Process {
             alt_stack: [0, 2, 0],
             started: Instant::now(),
             deterministic_ticks: None,
+            retired_instructions: 0,
             auxv_data: Vec::new(),
             stdin_data: Vec::new(),
             files,
@@ -278,6 +280,10 @@ impl Process {
 
     pub fn set_stdin(&mut self, data: Vec<u8>) {
         self.stdin_data = data;
+    }
+
+    pub fn set_retired_instructions(&mut self, retired: u64) {
+        self.retired_instructions = retired;
     }
 
     pub fn is_fd_open(&self, fd: u64) -> bool {
@@ -1518,12 +1524,19 @@ impl Process {
     }
 
     fn sys_clock_gettime(&mut self, clk: u64, ts: u64, mmu: &mut Memory) -> i64 {
-        if !matches!(clk, 0 | 1 | 4 | 7) {
+        if !matches!(clk, 0 | 1 | 2 | 3 | 4 | 7) {
             return -EINVAL;
         }
         let (sec, nsec) = if let Some(ticks) = self.deterministic_ticks {
-            let epoch = if clk == 0 { 1_700_000_000 } else { 0 };
-            (epoch + ticks / 1000, (ticks % 1000) * 1_000_000)
+            if matches!(clk, 2 | 3) {
+                (
+                    self.retired_instructions / 1_000_000_000,
+                    self.retired_instructions % 1_000_000_000,
+                )
+            } else {
+                let epoch = if clk == 0 { 1_700_000_000 } else { 0 };
+                (epoch + ticks / 1000, (ticks % 1000) * 1_000_000)
+            }
         } else {
             match clk {
                 0 => {
@@ -1536,6 +1549,10 @@ impl Process {
                     let d = self.started.elapsed() + std::time::Duration::from_secs(1000);
                     (d.as_secs(), d.subsec_nanos() as u64)
                 }
+                2 | 3 => {
+                    let d = self.started.elapsed();
+                    (d.as_secs(), d.subsec_nanos() as u64)
+                }
                 _ => unreachable!(),
             }
         };
@@ -1545,7 +1562,9 @@ impl Process {
         if mmu.write_bytes(ts, &buf).is_err() {
             -EFAULT
         } else {
-            if let Some(ticks) = &mut self.deterministic_ticks {
+            if let Some(ticks) = &mut self.deterministic_ticks
+                && !matches!(clk, 2 | 3)
+            {
                 *ticks = ticks.saturating_add(1);
             }
             0

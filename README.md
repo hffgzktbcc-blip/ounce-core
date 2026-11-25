@@ -28,7 +28,7 @@ Ounce-Core runs supported programs through three CPU engines and compares their 
 
 **What the engines are, and what their agreement means.** The Interpreter executes decoded instructions. **Tier-3** is a decoded-instruction block cache with fused traces; it does not emit machine code, and it hands any instruction it does not handle to the interpreter (the name is historical). **Tier-4** is the JIT (`--features native-jit`, Cranelift). All engines share one instruction decoder, and Tier-3 and Tier-4 fall back to the interpreter, so agreement between engines is a regression check, not independent evidence of correctness. Independent evidence comes from the references named in the [evidence table](docs/DETAILS.md#where-each-headline-number-comes-from).
 
-**Safety and determinism.** The runtime in `src/` forbids `unsafe` code (`#![forbid(unsafe_code)]`). Two separate crates use `unsafe`: `ounce-recompiler` (Tier-4, executable memory) and `ounce-nce` (native execution), each isolated and checked by CI. A run repeats exactly only with `--deterministic`; without it the guest reads the host's real-time and monotonic clocks.
+**Safety and determinism.** The runtime in `src/` forbids `unsafe` code (`#![forbid(unsafe_code)]`). Two separate crates use `unsafe`: `ounce-recompiler` (Tier-4, executable memory) and `ounce-nce` (native execution), each isolated and checked by CI. A run repeats exactly only with `--deterministic`; without it the guest reads the host's real-time and monotonic clocks. Linux deterministic clock epochs, CPU-time clocks and the EL0 system-register contract are documented in [LIMITS](docs/LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026).
 
 ## A real bug in one minute
 
