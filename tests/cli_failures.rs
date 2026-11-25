@@ -834,3 +834,29 @@ fn version_banner_is_neutral_and_shows_features() {
     assert!(stdout.contains("nce"));
     assert!(stdout.contains("host-io"));
 }
+
+#[test]
+fn help_and_info_describe_the_actual_execution_model() {
+    let help = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .arg("help")
+        .output()
+        .unwrap();
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(help.contains("tier3 (decoded block cache, default)"), "{help}");
+    assert!(!help.contains("tier3 (reference interpreter"), "{help}");
+
+    let info = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .arg("info")
+        .output()
+        .unwrap();
+    assert!(info.status.success());
+    let info = String::from_utf8_lossy(&info.stdout);
+    assert!(
+        info.contains("Single-threaded AArch64 execution for bounded program testing"),
+        "{info}"
+    );
+    assert!(!info.contains("Octa-Core Preemptive Multi-Core Scheduler"), "{info}");
+    assert!(!info.contains("Tegra T239 Custom"), "{info}");
+    assert!(!info.contains("Preemptive Multi-Threaded Scheduler"), "{info}");
+}

@@ -41,7 +41,7 @@ Final state, seeds 1, 2, 3, 11, 12, 20261108, 21, 22, 1,000,000 words each:
 | interpreter executed and compared | 2,863,049 (about 2,010 distinct classes per seed) |
 | exact match (X, V, NZCV, QC) | 2,863,049 |
 | mismatches | 0 |
-| executed words whose FPSR exception flags differ from the host | 367,032 (not modelled, not counted as mismatches) |
+| executed words whose FPSR exception flags differ from the host | 367,032 (not modelled at the time of this run, not counted as mismatches) |
 | words the interpreter runs but the host calls UNDEFINED | 0 |
 
 ### Mismatches found and fixed
@@ -92,8 +92,8 @@ words in a class.
    already implemented on main.
 
 ## FPCR modes
-`fuzz_host --fpcr-mix` runs each random case under one of 8 FPCR values (default, FZ, DN, FZ+DN, RMode RP, RM, RZ, and
-FZ+DN+RZ), prints `TF <fpcr> ...` lines, and `fuzz-replay` replays each under the same FPCR and prints a per-FPCR table
+`fuzz_host --fpcr-mix` runs each random case under one of 10 FPCR values (default, FZ, DN, FZ+DN, RMode RP, RM, RZ,
+FZ+DN+RZ, FZ16, and FZ+DN+FZ16+RZ), prints `TF <fpcr> ...` lines, and `fuzz-replay` replays each under the same FPCR and prints a per-FPCR table
 (executed, value mismatches, flag-only differences) and the classes with flag-only differences.
 Seeds 101-124, 1M words each (about 9.7M host-executed, 8,647,219 emulator-executed, 533,801 of them in the FRINT*/FCVT*/
 FRECPE/FRSQRTE/URECPE/URSQRTE/FRECPS/FRSQRTS classes): 0 value mismatches and 0 flag differences in every mode, about 1.08M
@@ -105,8 +105,9 @@ SCVTF/UCVTF) and 12,028 flag-only differences spread evenly over the modes. Fixe
 4. `FRINT32Z`/`FRINT64Z` raise IXC when the result is inexact, like the X forms.
 Tests in `src/cpu/fuzz_insn_tests.rs`: `scalar_convert_honours_rmode_and_flags`, `fabd_scalar_raises_inexact_at_default_fpcr`,
 `scalar_fp_by_element_ignores_unread_lanes_for_flags`, `frint32z_raises_inexact`.
-Still untested: FZ16 and half precision, trap enables, FPCR bits other than FZ, DN and RMode, FPSR flags of ops the interpreter
-reports as unimplemented.
+Still untested by the recorded random-mode run above: FZ16 and half precision. Later targeted Apple M3 runs covered the
+implemented scalar FP16 forms and FZ16 (see the v0.11.0 and v0.12.0 changelog evidence). Trap enables, FPCR bits other than
+FZ, DN, FZ16 and RMode, and flags of instructions the interpreter reports as unimplemented remain outside this fuzzer's claims.
 
 ## Targeted classes (`--word-mask` / `--word-value`)
 `fuzz_host --word-mask M --word-value V` forces the bits in M to V in every generated word, so a rare encoding class can be
@@ -126,13 +127,14 @@ per class, host vs interpreter, all 8 FPCR values:
 
 ## Not covered (explicit)
 - Loads/stores, branches, system, integer scalar data-processing, SVE/SME, crypto, atomics.
-- Features the interpreter lacks: half-precision scalar and vector FP (FEAT_FP16), BF16/I8MM, FCMA, RDM, and
-  every encoding class it reports as unimplemented (top classes by count: 0x4f00fc00, 0x0f00fc00, 0x6e20f800; see the summary the tool prints).
+- Features the interpreter lacks: BF16/I8MM and every encoding class it reports as unimplemented (top classes by count:
+  0x4f00fc00, 0x0f00fc00, 0x6e20f800 in the recorded run; see the current summary the tool prints). FEAT_FP16, FCMA and
+  RDM support is partial; unsupported forms remain coverage gaps.
   That is about 11% of the words the host executes in this space (was 40%). The largest remaining groups are scalar FP16
   (about a third of it), the FEAT_FHM widening FMLAL/FMLSL(2), FCVTN/FCVTL/FCVTXN half-precision and round-to-odd forms, scalar
   FP by-element and scalar two-register FP ops, and some shift-immediate forms.
-- FPCR is 0 unless `fuzz_host --fpcr-mix` is used (see "FPCR modes"). FZ16 / half-precision arithmetic and trap enables are not fuzzed.
-- FPSR exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are not modelled by the interpreter and are not compared.
+- FPCR is 0 unless `fuzz_host --fpcr-mix` is used (see "FPCR modes"). The mix includes FZ16; trap enables are not fuzzed.
+- FPSR exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are modelled and compared separately from value/QC mismatches.
 - Tier-3 and Tier-4 are covered by the section "Tier-3 and Tier-4" below.
 - Other vector FP paths in `interpreter.rs` (`SimdVec4S`, the 2D paths) still use plain Rust `+`/`*` on NaN inputs; they
   matched in these runs but depend on the compiler keeping operand order. The default-NaN result of `0 * inf` relies on
