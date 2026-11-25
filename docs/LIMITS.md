@@ -2,7 +2,7 @@
 
 Each result in this project is evidence for a narrow statement. This page says, per claim, what the
 evidence does **not** show. Numbers come from [docs/verify](verify/README.md) and [the vision](VISION.md); if a number here disagrees with the
-per-harness README, the README wins. Terms: a **real mismatch** is a difference the maintainers' run counted after setting aside differences they classified as reference-side behaviour (the classification was not saved); a **paper check** is a small program written for this repo from a paper or specification and compared with published test values ([papers](verify/papers/README.md)); **bounded-verified** is defined in [the maturity table](#maturity-labels-and-where-each-claim-sits).
+per-harness README, the README wins. Terms: **"0 real mismatches"** is quoted from the CHANGELOG; no document in the repo defines "real" or lists any excluded case, and the classification is not saved in the repo; a **paper check** is a small program written for this repo from a paper or specification and compared with published test values ([papers](verify/papers/README.md)); **bounded-verified** is defined in [the maturity table](#maturity-labels-and-where-each-claim-sits).
 
 | Claim | What it does NOT prove |
 |---|---|
