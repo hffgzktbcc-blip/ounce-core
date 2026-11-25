@@ -15,8 +15,8 @@
       ],
       "sha256": "3fd52f32643de7e3869d954a7f5e6b66f8b243e7e2ec465f729483ed9ef0916f",
       "stop_kind": "clean_exit",
-      "baseline": 60267,
-      "budget": 61473
+      "baseline": 52587,
+      "budget": 53639
     },
     "nro/deko3d": {
       "command": [
@@ -26,8 +26,8 @@
       ],
       "sha256": "9e555711561ce16f846170a97545245422961b3991bb6526d16ef62833798af6",
       "stop_kind": "clean_exit",
-      "baseline": 1619330,
-      "budget": 1651717
+      "baseline": 659330,
+      "budget": 672517
     },
     "nro/gpu": {
       "command": [
@@ -37,8 +37,8 @@
       ],
       "sha256": "6583a56cf3afb5d88b167379330e6d8dcce27d4e6c55d67c9ac008cbc7079c74",
       "stop_kind": "clean_exit",
-      "baseline": 536977,
-      "budget": 547717
+      "baseline": 536969,
+      "budget": 547709
     },
     "nro/hello": {
       "command": [
