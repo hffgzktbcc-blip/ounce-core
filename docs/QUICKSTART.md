@@ -17,7 +17,7 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture --pres
 Tier-3. `--cpu=interpreter` is one instruction at a time.
 Guest arguments that start with `-` go after `--`, for example `... hello.nro -- --verbose`; before `--`,
 an unknown option is refused with exit status 2 rather than dropped (`ounce-core run-nro --help`).
-`--cpu=tier4` needs `cargo build --release --features native-jit`.
+`--cpu=tier4` works in release downloads from v0.13.0 on; v0.12.0 downloads and source builds without the feature print "Not available: rebuild with --features native-jit; running Tier-3", so use `cargo build --release --features native-jit` there. On macOS the binary is ad-hoc signed by the linker with no hardened runtime, so Tier-4 needs no entitlement; if you re-sign it with `codesign --options runtime`, add `com.apple.security.cs.allow-jit`.
 `--cpu=native` runs a homebrew NRO on an AArch64 host and needs
 `--features nce`; without that feature the run stays on the interpreter and
 says so.
