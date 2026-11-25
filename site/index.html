@@ -67,7 +67,7 @@
     <section aria-labelledby="problem">
       <h2 id="problem">The problem</h2>
       <p>You ship a library built on x86. Will it give the same answer on ARM64? You may not own an ARM64 machine to find out.</p>
-      <p>Ounce-Core runs supported programs and compares their results with references recorded on real ARM64 hardware. When the outputs differ, its reports and bounded traces help you investigate where the runs split. The project is open source and written in Rust.</p>
+      <p>Ounce-Core runs supported programs and compares their results with reference outputs (an Apple M3, <code>qemu-aarch64</code>, a native host build or the suite's own expected values, depending on the check). When the outputs differ, its reports and bounded traces help you investigate where the runs split. The project is open source and written in Rust.</p>
     </section>
 
     <section aria-labelledby="case-study">

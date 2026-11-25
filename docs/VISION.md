@@ -2,13 +2,13 @@
 
 **Understand why programs fail. Prove when they work.**
 
-Ounce-Core is an open-source ARM64 execution, debugging and verification platform, written in safe Rust. It runs selected software on several CPU engines, shows what happened, reproduces failures, and checks results against real ARM64 hardware, keeping enough evidence that anyone can reproduce the answer.
+Ounce-Core is an open-source ARM64 execution, debugging and verification platform, written in safe Rust. It runs selected software on several CPU engines, shows what happened, reproduces failures, and checks results against references (an Apple M3, `qemu-aarch64`, native host builds or a suite's own expected values, depending on the check), keeping enough evidence that anyone can reproduce the answer.
 
 Verification is the product. Ounce-Core is not another emulator promising to run everything. It started as a Switch homebrew runtime; Switch and Switch 2 are no longer the goal, and that work stays as a regression corpus.
 
 ## Three pillars
 
-1. **Ounce-Verify: prove correctness.** Run a program on the interpreter, the JIT and native execution, compare against a reference build on real hardware, detect discrepancies, and preserve hashes and reports. *Most mature pillar.*
+1. **Ounce-Verify: prove correctness.** Run a program on the interpreter, Tier-3 (a decoded-block cache), Tier-4 (the JIT) and native execution (NRO only), compare against a reference (a host build, `qemu-aarch64` or an Apple M3, depending on the check), detect discrepancies, and preserve hashes and reports. *Most mature pillar.*
 2. **Ounce-Debug: understand failures.** Reproduce an execution problem, compare historical results, and find where behaviour first diverges. *Demonstrated for one bounded workflow; broader tooling planned.*
 3. **Ounce-Learn: make computing understandable.** A practical place to study ARM64 execution, memory, CPU architecture and software verification, one instruction at a time in the browser. *A real WebAssembly interpreter playground now passes local and hosted Chromium checks; see [acceptance and limits](PLAYGROUND.md).*
 
@@ -26,7 +26,7 @@ In one working week, running unmodified open-source programs and diffing them ag
 - two fused floating-point instructions with the wrong sign, so `sin`, `cos` and `pow` returned wrong numbers;
 - a long list of missing vector instructions (widening multiply and add, byte reverse, register shifts, table lookup, polynomial multiply, narrowing and saturating ops), plus CRC32, scalar add and duplicate forms, and a fixed 50-million-instruction cap.
 
-Programs merged and checked on three engines (interpreter, JIT, native host execution): LZ4, xxHash, SQLite, Lua, and a 5,964-line floating-point instruction test. Additional harnesses, including zlib, cJSON, TinyExpr, Monocypher and wasm3, are now in the [differential manifest](verify/differential.json); consult each harness for its measured inputs and limits. A 300-input loader fuzz run produced no panics. Method and results: [docs/verify/](verify/README.md).
+Programs merged and checked on three engines (interpreter, Tier-3, native host execution; the first two share one decoder): LZ4, xxHash, SQLite, Lua, and a 5,964-line floating-point instruction test. Additional harnesses, including zlib, cJSON, TinyExpr, Monocypher and wasm3, are now in the [differential manifest](verify/differential.json); consult each harness for its measured inputs and limits. A 300-input loader fuzz run produced no panics. Method and results: [docs/verify/](verify/README.md).
 
 ## Maturity labels
 
@@ -57,7 +57,7 @@ Every claim carries one of four labels:
 
 - **Coverage is partial.** Many vector, floating-point and system instructions are undecoded or untested. A [decoder census](verify/CENSUS_2026-11-08.md) and [single-instruction fuzzer](verify/insn-fuzzer/README.md) now exist. The recorded census is a revision-specific snapshot, not current coverage. Next: retain CI fuzz results and close observed gaps.
 - **QC is modelled for implemented saturating instructions.** [Hardware comparisons](verify/qc-flag/README.md) cover bounded inputs; FPCR rounding, flush-to-zero and default-NaN, and the FPSR exception flags, are modelled for common scalar and vector FP forms on the interpreter and Tier-3. Tier-4 compiled FP cannot raise the flags, and FPCR trap enables and some vector half-precision forms remain unsupported; scalar FP16 is implemented and tested (#553, #554, #558), but the coverage is not comprehensive. [Cross-host differences](verify/README.md#hardware-differences) remain explicit.
-- **It is not fast.** The interpreter runs at roughly 20 million instructions per second, which is fine for tests. *Plan:* measure first. The bar is that the whole verified-program suite runs in CI in a few minutes. Speed is not what we compete on; beyond that bar it does not drive the roadmap.
+- **It is not fast.** One measurement on an Apple M3 under heavy load: about 10 million instructions per second on the interpreter and 17 million on Tier-3 ([method](LIMITS.md)), which is fine for tests. *Plan:* measure first. The bar is that the whole verified-program suite runs in CI in a few minutes. Speed is not what we compete on; beyond that bar it does not drive the roadmap.
 - **Native execution runs on the host CPU.** On an ARM64 host it checks the harness and the toolchain, not the emulator, so Tier-3 and Tier-4 are the real evidence.
 
 ## Roadmap (each step is one small, checkable result)

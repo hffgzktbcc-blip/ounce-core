@@ -10,8 +10,7 @@
 - Tier-3 and Tier-4 do not lower `SystemReg` or `SimdSatLong`; both fall back to `Cpu::step`, so they share the interpreter behaviour (unit test `qc_flag_matches_interpreter_on_all_tiers`, interpreter vs Tier-3 vs Tier-4 incl. FPSR/FPCR in the compared state).
 
 ## What is not modelled
-- FPCR is stored and read back verbatim (RES0 bits included, unlike hardware). Rounding mode, flush-to-zero, default-NaN, trap enables are NOT honoured by any FP instruction.
-- No cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are ever set by FP instructions; they are only writable and readable.
+- Trap enables are stored but never trap. *(Update 25 Nov 2026: the original 8 Nov text said FPCR rounding, flush-to-zero and default-NaN were not honoured and that no cumulative exception flags were set; both are now modelled. FPCR rounding mode, `FZ`, `DN` and `FZ16` are honoured by the FP forms listed in [LIMITS](../../LIMITS.md), and the interpreter and Tier-3 accumulate IOC, DZC, OFC, UFC, IXC and IDC into `FPSR`; see unit test `fpsr_exception_flags_accumulate_and_clear`. The result table below was recorded before that and covers QC only. FPCR is still stored verbatim, RES0 bits included.)*
 - Other saturating instructions set QC too: the narrows and shifts (see `saturating-shifts/`) and `SQADD`/`UQADD`/`SQSUB`/`UQSUB` (see `saturating-add-sub/`). Still undecoded, so no QC: `SQDMULH`/`SQRDMULH`, scalar `SQDMULL`, `SQABS`/`SQNEG`, register-shift `SQSHL`/`UQSHL`.
 - Native (`--cpu=native`) runs on real hardware; FPSR is not saved/restored across SVC entry/exit in the context struct (guest and host share the hardware register in between).
 

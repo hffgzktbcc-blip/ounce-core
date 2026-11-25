@@ -2,7 +2,7 @@
 
 Everything that used to sit on the front page of the README: subsystem status, the proof method, the test harness, the full command reference, the roadmap, sources and legal notes. Start with the [README](../README.md); come here when you need the detail.
 
-Contents: [Architecture](#architecture) · [Subsystem status](#subsystem-status) · [How the proof works](#how-the-proof-works) · [Switch regression corpus](#legacy-switch-regression-corpus) · [Test harness](#test-harness) · [Safe Rust boundary](#safe-rust-by-construction) · [Commands and setup](#commands-and-setup) · [Roadmap](#the-road-ahead) · [Sources and legal](#sources-and-porting-policy) · [Repository layout](#repository-layout)
+Contents: [Architecture](#architecture) · [Subsystem status](#subsystem-status) · [How the proof works](#how-the-proof-works) · [Where each headline number comes from](#where-each-headline-number-comes-from) · [Switch regression corpus](#legacy-switch-regression-corpus) · [Test harness](#test-harness) · [Safe Rust boundary](#safe-rust-by-construction) · [Commands and setup](#commands-and-setup) · [Roadmap](#the-road-ahead) · [Sources and legal](#sources-and-porting-policy) · [Repository layout](#repository-layout)
 
 ---
 
@@ -32,7 +32,7 @@ flowchart LR
     P["Open-source program<br/>(pinned version)"] --> H["Host build<br/>= reference output"]
     P --> A["ARM64 build"]
     A --> I["Interpreter"]
-    A --> J["JIT"]
+    A --> J["Tier-3 / Tier-4"]
     A --> N["Native (ARM64 hosts)"]
     H --> D{"Byte-for-byte<br/>diff"}
     I --> D
@@ -49,7 +49,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 | Subsystem | Status | Notes |
 | :--- | :--- | :--- |
-| AArch64 CPU | Implemented (subset) | Interpreter, Tier-1 block cache, Tier-2 decoded blocks, Tier-3 fused blocks, and optional Tier-4 native recompilation in `crates/ounce-recompiler` (`native-jit`). Guest writes to translated code stop the active block and invalidate stale translations; code-patch and differential tests cover this path. |
+| AArch64 CPU | Implemented (subset) | Interpreter, Tier-1 block cache, Tier-2 decoded blocks, Tier-3 fused decoded blocks (a block cache that falls back to the interpreter; it does not emit machine code), and optional Tier-4 (the JIT) native recompilation in `crates/ounce-recompiler` (`native-jit`). Guest writes to translated code stop the active block and invalidate stale translations; code-patch and differential tests cover this path. |
 | Memory | Implemented | 4 KB-page MMU with intra-page boundary alignment and per-page permissions. No DRAM timing model. |
 | Kernel (SVC) | Implemented (subset) | Threads, events, mutexes, memory and process queries needed by the test programs. |
 | IPC | Implemented (subset) | CMIF and TIPC message formats. Services are synthetic. |
@@ -79,7 +79,7 @@ Three rules make the [headline number](#legacy-switch-regression-corpus) hard to
 
 **2. Check the registered pixels.** Full-frame oracles compare an RGBA8 FNV-1a 64 hash. Probe oracles compare named pixels when only parts of a frame are predictable from source. A fault, unhandled SVC, timeout or early exit fails the oracle even if a frame was queued.
 
-**3. Two engines must agree bit for bit.** Every oracle runs twice: on the reference interpreter and on the Tier-3 JIT (`Tier3JitEngine`, which fuses hot decoded blocks into traces in safe Rust; it does not emit native code). A program counts only if both engines match the oracle *and* their queued frames are identical; otherwise the runner records "interpreter and Tier-3 frames differ". The canonical corpus headline counts qualifying outside programs using these two engines only. Native execution and the optional Tier-4 recompiler are evaluated separately; neither contributes to this interpreter/Tier-3 headline count.
+**3. Two engines must agree bit for bit.** Every oracle runs twice: on the reference interpreter and on Tier-3 (`Tier3JitEngine`, a decoded-instruction block cache that fuses hot decoded blocks into traces in safe Rust; it does not emit native code, and it hands instructions it does not handle to the interpreter, see [`tier3_jit.rs`](../src/cpu/tier3_jit.rs); the name is historical and Tier-4 is the JIT). A program counts only if both engines match the oracle *and* their queued frames are identical; otherwise the runner records "interpreter and Tier-3 frames differ". The two engines share one decoder and Tier-3 falls back to the interpreter, so their agreement is a regression check, not independent evidence; the independent part is the registered oracle. The canonical corpus headline counts qualifying outside programs using these two engines only. Native execution and the optional Tier-4 recompiler are evaluated separately; neither contributes to this interpreter/Tier-3 headline count.
 
 **Where the number comes from.** CI writes one [`ounce-verify/v0`](verify/README.md) record per program and engine, builds a canonical report from them, and derives the count from it ([`scripts/corpus_verify.py`](../scripts/corpus_verify.py)). The README headline and the oracle badge are never edited by hand: CI fails if either disagrees with the report. Canonical corpus evidence: [Ounce-Verify reporting](verify/README.md) and [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml). The CI-controlled headline is <!-- corpus-headline -->50/50<!-- /corpus-headline -->; inspect the matching run artifact for underlying records.
 
@@ -90,6 +90,35 @@ Three rules make the [headline number](#legacy-switch-regression-corpus) hard to
 | Safe Rust in `src` | `#![forbid(unsafe_code)]` | [`src/main.rs`](../src/main.rs), enforced by the compiler on every CI build |
 
 The oracles run on Linux only (the corpus is built in the devkitA64 Docker image). The three-OS CI jobs run tests written for this repository; they guard the code but are not proof that outside programs work.
+
+---
+
+## Where each headline number comes from
+
+Each number quoted in the README, with what it was compared against, the `ounce-core` commit it was measured on, and whether this repository lets you reproduce it. "Not reproducible from this repo" means the scripts, seeds or sources were not committed, so the number rests on the maintainers' word. Third-party sources are never committed; "reproducible" still means you fetch them yourself. Three terms: **"0 real mismatches"** is quoted from the CHANGELOG ("`0` real mismatches vs `qemu-aarch64`"); no document in the repo defines "real" or lists any excluded case, and the classification is not saved in the repo, so treat it as the run author's count, not a checkable one; a **paper check** is a small program written for this repo from a paper or specification and compared with published test values ([details](verify/papers/README.md)); **bounded-verified** means "matched a named reference on the listed inputs, with the evidence kept" ([labels](LIMITS.md#maturity-labels-and-where-each-claim-sits)).
+
+`baec66b` (23 Nov 2026) is **before the `#559` atomics fix** (`14b3c4d`): in those runs LSE atomics (`-mcpu=apple_m1` builds) executed as plain loads and stores. None of the `baec66b` suites has been re-run.
+
+| Headline number | Compared against | Measured on | Reproducible from this repo? |
+| :--- | :--- | :--- | :--- |
+| TestFloat 3e, 5,921,280 vectors, 9 groups, 0 real mismatches | `qemu-aarch64` (6 FMA NaN cases also spot-checked on an Apple M3) | `baec66b` | Partly. [`tools/testfloat/gen_trace.py`](../tools/testfloat/gen_trace.py) covers f32 and f64 only, against expected values it computes from the Arm rules (not `qemu-aarch64`). The f16 groups and the full run: no, scripts not committed. The only TestFloat result with committed method is a smaller run ([`IMPROVEMENT_IDEAS.md`](IMPROVEMENT_IDEAS.md#testfloat-results-10-november-2026): 430,640 cases, CI run 43180713127, commit `5ba3cd9`, 2026-11-12, interpreter and Tier-3, NaN-input cases skipped). |
+| 656 FMA NaN-priority cases | `qemu-aarch64`; 6 sampled on Apple M3 | `baec66b` | No, scripts not committed |
+| 144/144 `FZ`/`FZ16`/`DN` cases; 908/908 scalar f16 `FMOV`/`#imm`/fixed-point | Reference not recorded in the repo | `baec66b` | No, scripts not committed |
+| Scalar FP16 `FRECPE`/`FRSQRTE`/`FRECPS`/`FRSQRTS`/`FABD`/compares, 595,472 cases (`#558`) | Apple M3 | `0bce1d3` | No, probe not committed |
+| Csmith 2,815 compared; YARPGen 498/500 | `qemu-aarch64` | `baec66b` | No, scripts not committed |
+| `gcc.c-torture/execute` 1,586/1,602; CompCert `test/c` 69/72 | `qemu-aarch64` or native (the changelog does not say which, per suite) | `baec66b` | No, scripts not committed |
+| PolyBench/C 60/60 | `qemu-aarch64` and a native x86 build | `baec66b` | No, scripts not committed |
+| musl libc-test 276 pass, 198/199 math | Expected stdout; reference not recorded | `baec66b` | No, scripts not committed |
+| MicroPython 581/582 `tests/basics` | `qemu-aarch64` | `baec66b` | No, scripts not committed |
+| QuickJS 5/5 at `-O3 -mcpu=apple_m1`; libpng 168/168; libdeflate 1,800 round-trips; bzip2 140/140; brotli 205/205; PCRE2 51/51 | Reference not recorded in the repo | `baec66b` | No, scripts not committed (the older [`quickjs-harness`](verify/quickjs-harness/README.md) is a different, committed harness) |
+| Kahan `Paranoia` 4/4; Shewchuk predicates 90,000 cases; physics/quantum 9/9 | Paranoia's own verdict; exact arithmetic, `qemu-aarch64` and x86 for Shewchuk; invariants for physics/quantum (classical C simulations, no quantum hardware) | `baec66b` | No, sources and scripts not committed |
+| 102 paper checks | Published test values, plus a native x86-64 build of the same source; Tier-3 only | Not recorded (release notes say `baec66b`) | Yes: [`papers/run_all.sh`](verify/papers/README.md) |
+| Big Tech libraries: BLAKE3 822/822, libmpdec 148/148, s2n-bignum 384 passed / 13 skipped (397/397, 0 skipped, after `#570` added `FEAT_AES`: independent rerun on 24 Nov, PR head `1aa08b0`), libwebp 57/57, simdjson 6/6, secp256k1 119/119 (Tier-4 only), SGP4 962/1,222 | A native Apple M3 build of the same driver, or the suite's own checks | `0bce1d3` (`14b3c4d` for simdjson `-O3` and SGP4 `-O3`) | Partly. First-party drivers and build commands are in [`verify/bigtech/`](verify/bigtech/README.md); upstream sources, native oracles and raw logs are not. |
+| 51-harness Linux ARM64 ELF matrix | Native ARM64 Linux host output per [`differential.json`](verify/differential.json) | each CI commit | Yes: [`scripts/run_linux_arm64_matrix.py`](../scripts/run_linux_arm64_matrix.py). A pull request runs 3 programs (`lz4`, `xxhash`, `lua`); a push to `main` runs all 51. |
+| 50/50 first-frame NRO oracles | Registered pixel oracles, interpreter and Tier-3 | `c47fa14` snapshot | Yes ([`scripts/corpus_verify.py`](../scripts/corpus_verify.py)); needs the devkitA64 Docker image |
+| 199-op FP workload on Apple M3 | Apple M3 hardware | [result folder](verify/fp-workload/result-2026-11-19-apple-m3-199ops/summary.tsv) | Yes: [`verify/fp-workload/run.sh`](verify/fp-workload/run.sh) |
+
+No outside party has reproduced any of these ([REPRODUCE.md](REPRODUCE.md)).
 
 ---
 
@@ -175,6 +204,10 @@ The runtime in `src/` is one crate with `#![forbid(unsafe_code)]` at its root ([
 
 - **Native code generation.** [`crates/ounce-recompiler`](../crates/ounce-recompiler/src/lib.rs), the optional Tier-4 recompiler behind `native-jit`, denies `unsafe` crate-wide and allows it only in its `exec` module (W^X executable memory and calls into generated code).
 - **Native execution, ported from MIT code.** [`crates/ounce-nce`](../crates/ounce-nce/src/lib.rs), behind the `nce` feature, runs homebrew ARM64 code directly on an AArch64 host after rewriting its `svc`, `TPIDR_EL0` and timer instructions into trampolines (rules ported from nxnative, MIT; see [`THIRD_PARTY.md`](../THIRD_PARTY.md)). The rewriter is safe Rust; `unsafe` is denied crate-wide and allowed only in `arena` (guest memory at guest address == host address) and `exec` (entering guest code, trampoline exits, fault signals).
+
+`--cpu=native` is available for NRO programs only; `run-elf --cpu=native` exits 72 by design ([`runner.rs`](../src/linux/runner.rs)).
+
+Determinism is opt-in. With `--deterministic` the guest clock is fixed (real time starts at 1700000000 and advances by one millisecond per clock call); without it the guest reads the host's real-time and monotonic clocks, so a run need not repeat.
 
 Any other code, ported or new, that genuinely needs `unsafe` goes into an isolated crate with focused tests and review of that boundary ([CONTRIBUTING](../CONTRIBUTING.md)). Ported code that can be written safely goes into `src` as safe Rust.
 
