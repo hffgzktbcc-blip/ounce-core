@@ -71,7 +71,7 @@ After the one-line headline, `trace-diff` prints a short readout:
 
 - `step`: the instruction index of the first divergence.
 - `pc`: the program counter, plus `<symbol+0xoff>` when you pass `--elf program.elf` and it has a `.symtab` (stripped ELFs and `.nro` files print the bare address).
-- `insn`: the raw opcode and the decoder's form of the instruction (`MoveWide { rd: 0, imm: 1, .. }`).
+- `insn`: the raw opcode and the decoder's instruction in GNU/LLVM-style AArch64 assembly (`movz w0, #0x1`). Unsupported decoder variants retain their `Debug` form so diagnostics never hide a newly added instruction.
 - one line per register (`x0`..`x30`, `sp`, `v0`..`v31`, `nzcv`, `fpsr`, `fpcr`) whose recorded change differs, expected and actual side by side. `(unchanged)` means that side did not write the register in this step.
 - a `split` line under `nzcv`, `fpsr` or `fpcr` that decodes the flags (`nZCv`; `IOC|IXC`; `RMode=RP DN|FZ`).
 
@@ -81,7 +81,7 @@ Real output (`tests/diverge_smoke.rs`, `trace_diff_readout_names_step_symbol_ins
 first divergence at step 2 at pc 0x0000000000210148: register x0: expected 0x0000000000000001 (interpreter), actual 0x0000000000000002 (tier3)
   step     2
   pc       0x0000000000210148 <_start+0xc>
-  insn     0x52800020 MoveWide { rd: 0, imm: 1, shift: 0, op: Movz, is_64: false }
+  insn     0x52800020 movz w0, #0x1
   x0       expected 0x0000000000000001 | actual 0x0000000000000002
   nzcv     expected (unchanged) | actual 0x60000000
            split    expected (unchanged) | actual nZCv
