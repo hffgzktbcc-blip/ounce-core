@@ -21,10 +21,9 @@ per-harness README, the README wins.
 
 ## Known gaps in what the Linux ELF runner and CPU models execute (24 Nov 2026)
 
-These are verified against the source at `main` (18cf538, v0.12.0) and the [Big Tech run](verify/bigtech-2026-11-23.md):
+These are verified against the source at `main` (dbbb28d) plus the Unreleased changes and the [Big Tech run](verify/bigtech-2026-11-23.md):
 
-- **No `FEAT_AES`, `FEAT_SHA1` or `FEAT_SHA2`.** Programs that use them stop or skip. In the s2n-bignum run, 13 AES-dependent tests were skipped, not passed.
-- **`AT_HWCAP` is `0x20193`** (FP, ASIMD, PMULL, CRC32, ATOMICS, SHA3). It does not advertise AES, SHA1 or SHA2.
+- **`AT_HWCAP` is `0x2201fb`** (FP, ASIMD, AES, PMULL, SHA1, SHA2, CRC32, ATOMICS, SHA3, SHA512). `FEAT_AES`, `FEAT_SHA1`, `FEAT_SHA2` and `FEAT_SHA512` execute on every engine and match an Apple M3 bit for bit on the inputs listed in the [changelog](../CHANGELOG.md); `FEAT_SM3` and `FEAT_SM4` are not implemented.
 - **`futex` is not implemented**, and there are no guest threads (`clone` with thread flags returns `ENOSYS` with a one-time stderr note): run single-threaded guests only. Plain `cargo test` works without `--test-threads=1` because libtest catches the `ENOSYS`/`WouldBlock` failure on thread creation and executes tests sequentially inline on the main thread, while programs that spawn second threads (e.g. `std::thread::spawn`) fail with `WouldBlock` / `EAGAIN`.
 - **Files are a bounded in-memory scratch area**: `/tmp` and `/var/tmp` (at most 64 files and 64 open descriptors, 16 MiB per file, 64 MiB in total), plus `/dev/null` and `/proc/self/auxv`. Other paths fail with `ENOENT`. Nothing reaches the host file system. Guest `getrandom` is a fixed stream, so a program that needs real entropy sees the same bytes every run.
 - **Standard input is empty** unless you pass `--stdin` or `--stdin=<path>` (64 MiB limit).

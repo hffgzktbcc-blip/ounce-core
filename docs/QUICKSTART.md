@@ -112,7 +112,7 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 This shows that small test binaries run; it does not show that every crate's tests do. Tests
-that spawn threads or need AES (`FEAT_AES` is not implemented) or other unsupported system
+that spawn threads or need other unsupported instructions or system
 calls stop with a diagnosis ([limits](LIMITS.md)).
 
 ## Where the other tools live
