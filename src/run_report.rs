@@ -85,8 +85,7 @@ pub fn exit_code_for(stop_kind: &str) -> i32 {
     }
 }
 
-/// The `ounce.run.v1` JSON object for `report`. Every field is flat: consumers such as `ounce-hb` do not
-/// parse nested values yet (roadmap Q2 prerequisite).
+/// The `ounce.run.v1` JSON object for `report`. Every field remains flat for compatibility with the published contract.
 pub fn to_json(report: &RunReport) -> serde_json::Value {
     serde_json::json!({
         "schema": "ounce.run.v1",

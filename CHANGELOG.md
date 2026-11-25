@@ -9,6 +9,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Fixed: `--report-json=-` (and `OUNCE_REPORT_JSON=-`) now prints only the `ounce.run.v1` JSON on stdout for `run-elf`, `run-nro` and `run`. Guest output (stdout and stderr) and the VM's progress lines go to stderr, so `json.load(stdout)` works; before, the guest's text came first and broke it. `--report-json=<file>` is unchanged.
 - Fixed: `cargo test` through `ounce-core run-elf --` works without `--test-threads=1`. Rust's libtest attempts to spawn a worker thread per test; `ounce-core` refuses `clone`/`clone3` thread flags with `ENOSYS` and emits a one-time note to `stderr`. musl translates `ENOSYS` to `EAGAIN` (`WouldBlock`), which libtest catches to run tests sequentially inline on the main thread. Honest 1-CPU Linux scheduling is completed by `sched_getaffinity`, `sched_setaffinity`, and `getcpu`, while programs requiring real second threads (`std::thread::spawn`) fail clearly with `WouldBlock`.
 - Changed: release downloads are built, tested and smoke-tested with `--features native-jit` on Linux x86-64, Linux arm64, macOS arm64 and Windows x86-64, so `--cpu=tier4` works in every download from v0.13.0 (v0.12.0 downloads lack it). The release workflow asserts `engine=Tier-4` with no fallback. The SBOMs, `THIRD_PARTY_NOTICES.txt` and the notice review now cover the 27 extra crates (Cranelift, regalloc2 and others); the owner accepted these licences on 2026-11-25, so `package_release.py --require-reviewed` can publish.
+- Fixed: verification docs now distinguish dated FP16/FZ16/FPSR and atomics results from current support, contract docs mark archived sibling repositories as historical context, and `help` / `info` describe Tier-3 and the single-threaded testing runtime accurately.
 
 ## 0.12.0 — 2026-11-24 (released)
 
@@ -19,6 +20,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Fixed: FEAT_LSE atomics (`LD<op>`, `SWP`, `CAS`, `CASP`) and `LDAPR` were silently executed as plain loads and stores, so programs built with `-mcpu=apple_m1` or any LSE target computed wrong atomics. They are now implemented (`#559`). `LDXP`/`STXP` now stop as unimplemented instead of running wrong.
 - Verified: [Big Tech and fintech library runs](docs/verify/bigtech-2026-11-23.md) (23 Nov 2026, Apple M3): BLAKE3 `822/822`, libmpdec `148/148`, s2n-bignum `384` passed with `13` skipped for missing `FEAT_AES`, libwebp `57/57`, simdjson `6/6`, secp256k1 `119/119` on Tier-4 only (Tier-3 and interpreter runs did not finish), SGP4 `962/1,222` lines bit-identical to a macOS-libm oracle. The page lists each engine, flag and caveat.
 - Docs: `docs/LIMITS.md` lists the current Linux runner limits (no `FEAT_AES`/`SHA1`/`SHA2`, `HWCAP_ATOMICS` not advertised, `LDXP`/`STXP`, no `futex`) and drops limits fixed above. Headless builds need no ALSA or udev packages (only `--features host-io` does); `ounce-hb`, `ounce-runtime` and `Ounce-Spark` are archived and no longer linked as live tools; agents no longer start from the family roadmap, which is now marked historical.
+  Post-release note: that limits summary was accurate when v0.12.0 shipped; `HWCAP_ATOMICS` and pair exclusives were added afterwards.
 
 ## 0.11.0 — 2026-11-23 (released)
 
@@ -317,9 +319,6 @@ the time. This section is reconstructed from that git history for review.
 
 ### Added
 - FPSR cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are set by FP arithmetic, conversions, FRINT*, compares and FMAX/FMIN in the interpreter and Tier-3, scalar and vector (`src/cpu/softfp.rs`, `Cpu::step`). FP arithmetic now always goes through the soft-float path, so interpreter FP is slower than before (not measured). Tier-4 compiled FP does not set the flags until the program first accesses FPSR; after that FP arithmetic and compares run in the interpreter. The fp-edge gate now compares flags (0 mismatches over 294,156 cases per engine against qemu-user; hardware left to CI). `tools/testfloat/gen_trace.py` emits flags, all four rounding modes, conversions, FRINT* and compares, with a CI job (`testfloat` in `fp-edge.yml`) that has not run yet.
-
-### Fixed
-- FPCR rounding mode, flush-to-zero and default-NaN are now honoured by ordinary FP arithmetic (#363): scalar and vector `FADD/FSUB/FMUL/FDIV/FNMUL/FMULX/FABD`, `FMLA/FMLS` and `FMADD` family, `FSQRT`, `FRINT*`, `FCVT` single/double, `SCVTF/UCVTF/FCVTZ*` and FP compares, through a pure-integer soft-float (`src/cpu/softfp.rs`) used only when one of those FPCR fields is set. The fp-edge corpus shows 0 mismatches at all nine FPCR values against a qemu-user reference (was 36,941); hardware runs are left to CI. Tier-4 defers to the interpreter while those FPCR fields are set. FPSR exception flags and half-precision arithmetic are still not modelled.
 
 ## 0.7.0
 

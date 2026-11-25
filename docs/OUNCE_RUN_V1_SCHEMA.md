@@ -1,12 +1,12 @@
 # `ounce.run.v1` — Machine-Readable Run Report Contract
 
-`ounce.run.v1` is a **data-only** JSON contract emitted by execution engines (`ounce-core`, `ounce-runtime`) when invoked with `--report-json=<path>` (or `--report-json <path>`). `OUNCE_REPORT_JSON` sets the same path. The flag landed on `main` on 14 Nov 2026 (`#439` in ounce-core, `#11` in ounce-runtime). It ships in ounce-core v0.9.0 and later; it was not in the ounce-core v0.8.2 or ounce-runtime v0.5.0 release archives.
+`ounce.run.v1` is a **data-only** JSON contract emitted by `ounce-core` when invoked with `--report-json=<path>` (or `--report-json <path>`). `OUNCE_REPORT_JSON` sets the same path. The flag landed on `main` on 14 Nov 2026 (`#439`). It ships in ounce-core v0.9.0 and later. The archived `ounce-runtime` repository also emitted the schema historically; its name remains an allowed `engine` value for compatibility with saved reports.
 
 Using an out-of-band report file keeps guest `svcOutputDebugString` output on `stdout` completely separate from engine diagnostics and preserves clean MIT / GPL-3.0-or-later process isolation.
 
-On ounce-core, `run`, `run-nro` and `run-elf` write the file. For `run` / `run-nro`, `silent_fallback` is always `false`, even when a requested Tier-4 build falls back to Tier-3; `run-elf` sets it to `true` in that case. ounce-core and ounce-runtime both write `frames_presented` and `framebuffer_hash`. The two engines do not yet use the same `stop_kind` for every fault.
+On ounce-core, `run`, `run-nro` and `run-elf` write the file. For `run` / `run-nro`, `silent_fallback` is always `false`, even when a requested Tier-4 build falls back to Tier-3; `run-elf` sets it to `true` in that case. Historical reports from archived `ounce-runtime` also contain `frames_presented` and `framebuffer_hash`; the two implementations did not use the same `stop_kind` for every fault.
 
-Every field is a flat scalar or `null`. Nested objects and arrays wait for the recursive JSON parser in `ounce-hb` (roadmap Q2). New fields are additive: consumers must ignore fields they do not know. `src/run_report.rs` tests that the emitted fields equal the table below and that the `exit_code` mapping matches the second table.
+Every field is a flat scalar or `null`, preserving compatibility with the published schema and saved reports. New fields are additive: consumers must ignore fields they do not know. `src/run_report.rs` tests that the emitted fields equal the table below and that the `exit_code` mapping matches the second table.
 
 ---
 
@@ -20,7 +20,7 @@ Every field is a flat scalar or `null`. Nested objects and arrays wait for the r
 | `tier` | `string` | `"interpreter"` \| `"tier3"` \| `"tier4"` \| `"nce"` |
 | `silent_fallback` | `bool` | `true` if a requested tier (`tier4`/`nce`) fell back to a lower tier |
 | `stop_kind` | `string` | Canonical stop reason (see table below) |
-| `exit_code` | `integer` | Stable `ounce-hb` exit code (`0`, `10`–`17`) |
+| `exit_code` | `integer` | Stable schema exit code (`0`, `10`–`17`) |
 | `pc` | `u64 \| null` | Faulting or stopping program counter |
 | `lr` | `u64 \| null` | Link register (`x30`) when the program stopped: the return address of the innermost call, so the `BL` / `BLR` that made it is at `lr - 4`. Set exactly when `pc` is, `null` otherwise. `0` when nothing has made a call yet (on `run-elf` the three small fixtures `exitcode`, `badsyscall` and `hello` report `0`). Additive field (#475) |
 | `sp` | `u64 \| null` | Stack pointer when the program stopped. Set exactly when `pc` is, `null` otherwise. Additive field (#475) |

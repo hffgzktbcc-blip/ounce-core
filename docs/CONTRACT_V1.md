@@ -6,6 +6,9 @@
 > `b24002b`, updated for the v0.10.0 release, plus compatibility tests that would enforce it. Until the owner records a decision (see
 > [Owner questions](#owner-questions)), the schema docs and the code stay free to change.
 
+> **Archived sibling context:** `ounce-hb` and `ounce-runtime` are archived. References below describe the roles those
+> repositories had when this draft was written; they are not current owners, consumers, or active implementations.
+
 Every statement below was checked against the code or by running the binary; the last column of each table names the
 test that pins it. Where the issue text and the code disagree, this file says what the code does and flags it.
 
@@ -30,10 +33,10 @@ Once a contract item is frozen:
 
 | Issue says | What the code does | Consequence |
 |---|---|---|
-| Exit codes `0`, `2-5`, `10-17` | ounce-core's own process statuses are `0`, `1`, `2` (plus `70`-`73` on `run-elf`, and the guest's status). It never exits `3`, `4`, `5` or `10`-`17`. `10`-`17` are the value of the `exit_code` **field** in the report. The family roadmap calls `2..5` `ounce-hb` infrastructure exits. | `2-5` live in `ounce-hb` (not in this repo): not verifiable or testable here. See [Exit codes](#exit-codes). |
-| Flag `--timeout` | Not an option of `run` / `run-nro` / `run-elf` (`run` refuses it with status 2). Only `ounce-core ui --timeout SECS` exists. The roadmap puts it on `ounce-hb run`. | Pinned as "not a run flag here". |
+| Exit codes `0`, `2-5`, `10-17` | ounce-core's own process statuses are `0`, `1`, `2` (plus `70`-`73` on `run-elf`, and the guest's status). It never exits `3`, `4`, `5` or `10`-`17`. `10`-`17` are the value of the `exit_code` **field** in the report. The historical family roadmap assigned `2..5` infrastructure exits to archived `ounce-hb`. | `2-5` are not implemented in this repo and the repository once assigned them is archived, so they are not verifiable or testable here. See [Exit codes](#exit-codes). |
+| Flag `--timeout` | Not an option of `run` / `run-nro` / `run-elf` (`run` refuses it with status 2). Only `ounce-core ui --timeout SECS` exists. The historical roadmap put it on archived `ounce-hb run`. | Pinned as "not a run flag here". |
 | Flag `--json` | Not an option of `run` / `run-nro` / `run-elf` (refused with status 2). `--json <path>` exists on `diverge` and `trace-diff`; `census --json` is a boolean switch. The run report flag is `--report-json=<path>` (or `OUNCE_REPORT_JSON`). | Owner decides whether `--report-json` joins the frozen flags. |
-| `ounce.repro.v1` | Ounce-Core now keeps ten metadata-only manifests under `tests/repro/` and checks them in `tests/repro_corpus.rs`; `ounce-hb` still owns the full repro-bundle/consumer contract. | The local corpus tests do not freeze the cross-project schema. |
+| `ounce.repro.v1` | Ounce-Core now keeps ten metadata-only manifests under `tests/repro/` and checks them in `tests/repro_corpus.rs`; the historical plan assigned the full repro-bundle/consumer contract to now-archived `ounce-hb`. | The local corpus tests do not freeze the historical cross-project schema. |
 
 ## `ounce.run.v1`
 
@@ -112,7 +115,7 @@ the design; the report's `stop_kind` tells them apart); `census`, `fuzz-replay`,
 ### `2`-`5`
 
 Not produced by ounce-core as distinct codes (`2` is its usage-error status; `3`-`5` do not occur). If these are the
-`ounce-hb` infrastructure exits, they must be frozen and tested in that repository.
+infrastructure exits historically assigned to `ounce-hb`, they cannot now be frozen and tested in that archived repository.
 
 ## `ounce.trace.v1`
 
@@ -146,20 +149,21 @@ the flags the issue names and are not frozen by this draft.
   `audren.nro`, `sdmc.nro`, `exitcode.elf`, `badsyscall.elf`. Hand-assembled encodings: `mov w0,#0` `0x52800000`,
   `svc #7` `0xD40000E1`, `svc #0x26` `0xD40004C1`, `svc #0xff` `0xD4001FE1`, `svc #0x18` `0xD4000301`, `brk #0`
   `0xD4200000`, `udf #0` `0x00000000`.
-- They detect regressions in **this** binary. They do not show that any other consumer (`ounce-hb`, `ounce-runtime`,
-  `deckstream`) parses these documents, and they say nothing about guest correctness.
+- They detect regressions in **this** binary. They do not show that another active consumer parses these documents, and
+  they say nothing about guest correctness. The named historical consumers `ounce-hb` and `ounce-runtime` are archived;
+  `deckstream` is an independent project.
 - Red check, done once while writing them and reverted: renaming `lr`, changing `memory_fault` to 21, changing the
   `run-elf` fault status 71 to 75, turning `pc` into a string and adding an unlisted key each fail a named test.
-- Not reachable or not tested: `window_closed`, `cpu_halted`, `tier4` / `nce` reports, `--gui`, `ounce-hb` statuses
+- Not reachable or not tested: `window_closed`, `cpu_halted`, `tier4` / `nce` reports, `--gui`, historical `ounce-hb` statuses
   `2-5`, `ounce.repro.v1`, the `diverge` hardware-replay statuses.
 
 ## Owner questions
 
-1. **Scope of "exit codes `2-5`".** Are these the `ounce-hb` infrastructure exits? If so, the freeze for them belongs
-   in `ounce-hb`; ounce-core's own statuses (`0`, `1`, `2`, `70`-`73`) are not in the issue's list. Should they be
+1. **Scope of "exit codes `2-5`".** Were these the infrastructure exits assigned to archived `ounce-hb`? If so, no
+   active repository currently owns their freeze; ounce-core's own statuses (`0`, `1`, `2`, `70`-`73`) are not in the issue's list. Should they be
    frozen too, or marked implementation detail?
-2. **`--timeout` and `--json` are `ounce-hb` flags.** Should the frozen set for ounce-core be `--max-frames`, `--sdmc`
-   and `--report-json` instead, with `--timeout` / `--json` frozen in `ounce-hb`?
+2. **`--timeout` and `--json` were assigned to archived `ounce-hb`.** Should the frozen set for ounce-core be
+   `--max-frames`, `--sdmc` and `--report-json` instead, leaving those historical flags outside this contract?
 3. **Which of the nine fields first shipped in v0.10.0 should join the frozen v1.0 contract?** (`frames_presented`, `framebuffer_hash`, `lr`, `sp`,
    `sm_service`, `cmif_cmd_id`, `audio_frames_mixed`, `audio_hash`, `guest_exit_status`.) They are published but not yet frozen as a cross-project compatibility contract. Specific doubts: `framebuffer_hash`
    excludes width and height and is `null` for a `gpu-present` window outside deterministic mode; `lr` / `sp` mean
@@ -167,10 +171,10 @@ the flags the issue names and are not frozen by this draft.
 4. **`run` / `run-nro` load failures write no report.** Add a `loader_error` report (additive, status stays 1) before
    freezing, or freeze today's behaviour?
 5. **`cpu_halted` / `15` is dead code.** Freeze a value nothing can produce, or drop it from the table?
-6. **`ounce.repro.v1`.** No definition exists in this repository. Who owns the schema (`ounce-hb`), and should a
+6. **`ounce.repro.v1`.** No definition exists in this repository. With its former owner `ounce-hb` archived, should a
    copy of its contract doc and key baseline be added here, or is it frozen only there?
-7. **`ounce.trace.v1`** has one implementation and no consumer. Freeze before a second implementation
-   (`ounce-runtime`, `ounce-hb diff-trace`) has been checked against it?
+7. **`ounce.trace.v1`** has one active implementation and no active consumer. Freeze before an active second
+   implementation has been checked against it? The formerly named candidates (`ounce-runtime`, `ounce-hb diff-trace`) are archived.
 8. **Status 70-73 on `run-elf`** share the number space with guest statuses. Keep as is and freeze, or move engine
    stops to a distinct channel (the report already has one)?
 9. **Open enumerations.** Confirm `tier` and `stop_kind` are open sets (additions allowed), as the additive-only rule
@@ -185,18 +189,18 @@ reject them in one pass. **Nothing here is frozen.** The freeze happens only whe
 
 | # | Proposed answer |
 |---|---|
-| 1 | Freeze `0`, `1` and `2` with the meanings the per-command table above gives (for `run` / `run-nro`: success, failure, usage error). `run-elf` is different: it exits with the program's own status, so `2` there is either a usage error or the program's own status (the number alone cannot tell them apart), and `diverge` uses `2` for "could not run". Statuses `70`-`73` are an implementation detail and may change. The `2`-`5` infrastructure exits are frozen in `ounce-hb`, not here. |
-| 2 | Freeze `--max-frames`, `--sdmc` and `--report-json` for ounce-core. `--timeout` and `--json` are frozen in `ounce-hb`. |
+| 1 | Freeze `0`, `1` and `2` with the meanings the per-command table above gives (for `run` / `run-nro`: success, failure, usage error). `run-elf` is different: it exits with the program's own status, so `2` there is either a usage error or the program's own status (the number alone cannot tell them apart), and `diverge` uses `2` for "could not run". Statuses `70`-`73` are an implementation detail and may change. The historical proposal put `2`-`5` in now-archived `ounce-hb`, not here. |
+| 2 | Freeze `--max-frames`, `--sdmc` and `--report-json` for ounce-core. The historical proposal assigned `--timeout` and `--json` to now-archived `ounce-hb`; they need a new active owner before a freeze. |
 | 3 | Freeze `frames_presented`, `audio_frames_mixed`, `audio_hash` and `guest_exit_status` now. Wait on `framebuffer_hash` (it ignores width and height and is `null` only when no frame was presented, or when a `gpu-present` build draws the frame on the host GPU with a window open outside deterministic mode), `lr` and `sp` (they only mean "at the stop") until real use settles them. |
 | 4 | Add a `loader_error` report for `run` / `run-nro` load failures (additive; the process status stays `1`), then freeze. |
 | 5 | Drop `cpu_halted` / `15` from the table: nothing can produce it. |
-| 6 | `ounce-hb` owns `ounce.repro.v1` and freezes it there. ounce-core links to that contract instead of keeping a copy. |
-| 7 | Do not freeze `ounce.trace.v1` until a second implementation (`ounce-runtime` or `ounce-hb diff-trace`) has been checked against it. |
+| 6 | The historical proposal assigned `ounce.repro.v1` to now-archived `ounce-hb`; it needs a new active owner before a freeze. |
+| 7 | Do not freeze `ounce.trace.v1` until an active second implementation has been checked against it; the named candidates, `ounce-runtime` and `ounce-hb diff-trace`, are archived. |
 | 8 | Keep statuses `70`-`73` as they are, unfrozen (see question 1). Engine stops are already reported in the report's `stop_kind`. |
 | 9 | Yes: `tier` and `stop_kind` are open sets, so additions are allowed. |
 | 10 | The freeze coincides with the `v1.0.0` tag. The `schema` string is the version marker. |
 
-**Status of the sibling check (2026-11-19).** `ounce-runtime` now writes `lr`, `sp` and `guest_exit_status` (its PR #25) and
+**Historical sibling check (2026-11-19).** Before it was archived, `ounce-runtime` wrote `lr`, `sp` and `guest_exit_status` (its PR #25) and
 `audio_frames_mixed` and `audio_hash` (its PR #26). Running both tools on the 11 shared programs, every program agrees on
 the five agreed keys (`schema`, `stop_kind`, `exit_code`, `frames_presented`, `framebuffer_hash`) and no advisory key is missing from either tool. `insns_executed` still differs: ounce-core counts 15
 more on 10 programs and 1 fewer on `threads`. Until that is explained it stays advisory, and nothing here is frozen.
