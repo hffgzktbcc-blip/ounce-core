@@ -5,6 +5,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 ## Unreleased
 
 - Added: `AESE`, `AESD`, `AESMC`, `AESIMC`; the SHA-1 and SHA-256 hash and schedule instructions; and `SHA512H`, `SHA512H2`, `SHA512SU0`, `SHA512SU1`. `AT_HWCAP` is now `0x2201fb` and advertises AES, SHA1, SHA2 and SHA512. A native Apple M3 oracle and all three engines agree bit for bit on full AES-128 encrypt/decrypt, SHA-1/SHA-256/SHA-512 of `abc`, and 2,048 deterministic pseudo-random inputs for each of the 18 instructions; Tier-3 and Tier-4 deliberately fall back to the verified interpreter implementation. s2n-bignum at `4685b5c` passes all `397/397` tests on each engine; the 13 formerly skipped AES tests now run and pass.
+- Docs: a versioning and release policy in [CONTRIBUTING.md](CONTRIBUTING.md#versioning-and-releases) (what makes a minor or patch release, at most one minor a week, the release gate); [SECURITY.md](SECURITY.md) now supports the newest patch of the newest minor instead of naming `0.10.x`.
 - Added: `LDXP`, `LDAXP`, `STXP` and `STLXP` (W and X pairs), so C `__int128` atomics and `portable-atomic` 128-bit loops run. Pairs must be aligned to the whole pair; `LDXP Rt, Rt` (including `XZR, XZR`) stops as undefined, as it raises `SIGILL` on the Apple M3. Known-answer tested against M3 output on the interpreter, Tier-3 and Tier-4 (`lse_kat`).
 - Added: `AT_HWCAP` advertises `HWCAP_ATOMICS`, now `0x20193`. Rust and C programs built without `+lse` take the `FEAT_LSE` instructions through outline atomics; `lse_kat` value-checks every LSE form (`CAS{B,H,}`, `CASP`, `LD<op>`, `ST<op>`, `SWP`, `LDAPR`) against the M3.
 - Fixed: `--report-json=-` (and `OUNCE_REPORT_JSON=-`) now prints only the `ounce.run.v1` JSON on stdout for `run-elf`, `run-nro` and `run`. Guest output (stdout and stderr) and the VM's progress lines go to stderr, so `json.load(stdout)` works; before, the guest's text came first and broke it. `--report-json=<file>` is unchanged.
@@ -14,6 +15,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Docs: fixed relative links in v0.12.0 release notes to absolute GitHub URLs and added absolute-link convention for release notes; added release download checksum verification instructions for macOS and Linux; documented prebuilt binary feature defaults (requesting Tier-4 without `native-jit` falls back to Tier-3) and build instructions; refreshed stale commit references in `QUICKSTART.md` and `LIMITS.md` to `18cf538` (`v0.12.0`); updated README research paper link to the published website.
 - CLI: updated `--version` banner to neutral ARM64 Execution & Verification Runtime framing without Nintendo/NVIDIA affiliation, displaying built status of optional engines/features (`native-jit`, `nce`, `host-io`).
 - Scripts: `scripts/verify_differential.py` honours `$DEVKITPRO` for the template Makefile, reports skipped engine checks when run without `--nro`, and pruned obsolete TinyExpr reference from `docs/REPRODUCE.md`.
+- Fixed: verification docs now distinguish dated FP16/FZ16/FPSR and atomics results from current support, contract docs mark archived sibling repositories as historical context, and `help` / `info` describe Tier-3 and the single-threaded testing runtime accurately.
 
 ## 0.12.0 — 2026-11-24 (released)
 
@@ -24,6 +26,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Fixed: FEAT_LSE atomics (`LD<op>`, `SWP`, `CAS`, `CASP`) and `LDAPR` were silently executed as plain loads and stores, so programs built with `-mcpu=apple_m1` or any LSE target computed wrong atomics. They are now implemented (`#559`). `LDXP`/`STXP` now stop as unimplemented instead of running wrong.
 - Verified: [Big Tech and fintech library runs](docs/verify/bigtech-2026-11-23.md) (23 Nov 2026, Apple M3): BLAKE3 `822/822`, libmpdec `148/148`, s2n-bignum `384` passed with `13` skipped for missing `FEAT_AES`, libwebp `57/57`, simdjson `6/6`, secp256k1 `119/119` on Tier-4 only (Tier-3 and interpreter runs did not finish), SGP4 `962/1,222` lines bit-identical to a macOS-libm oracle. The page lists each engine, flag and caveat.
 - Docs: `docs/LIMITS.md` lists the current Linux runner limits (no `FEAT_AES`/`SHA1`/`SHA2`, `HWCAP_ATOMICS` not advertised, `LDXP`/`STXP`, no `futex`) and drops limits fixed above. Headless builds need no ALSA or udev packages (only `--features host-io` does); `ounce-hb`, `ounce-runtime` and `Ounce-Spark` are archived and no longer linked as live tools; agents no longer start from the family roadmap, which is now marked historical.
+  Post-release note: that limits summary was accurate when v0.12.0 shipped; `HWCAP_ATOMICS` and pair exclusives were added afterwards.
 
 ## 0.11.0 — 2026-11-23 (released)
 
@@ -322,9 +325,6 @@ the time. This section is reconstructed from that git history for review.
 
 ### Added
 - FPSR cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are set by FP arithmetic, conversions, FRINT*, compares and FMAX/FMIN in the interpreter and Tier-3, scalar and vector (`src/cpu/softfp.rs`, `Cpu::step`). FP arithmetic now always goes through the soft-float path, so interpreter FP is slower than before (not measured). Tier-4 compiled FP does not set the flags until the program first accesses FPSR; after that FP arithmetic and compares run in the interpreter. The fp-edge gate now compares flags (0 mismatches over 294,156 cases per engine against qemu-user; hardware left to CI). `tools/testfloat/gen_trace.py` emits flags, all four rounding modes, conversions, FRINT* and compares, with a CI job (`testfloat` in `fp-edge.yml`) that has not run yet.
-
-### Fixed
-- FPCR rounding mode, flush-to-zero and default-NaN are now honoured by ordinary FP arithmetic (#363): scalar and vector `FADD/FSUB/FMUL/FDIV/FNMUL/FMULX/FABD`, `FMLA/FMLS` and `FMADD` family, `FSQRT`, `FRINT*`, `FCVT` single/double, `SCVTF/UCVTF/FCVTZ*` and FP compares, through a pure-integer soft-float (`src/cpu/softfp.rs`) used only when one of those FPCR fields is set. The fp-edge corpus shows 0 mismatches at all nine FPCR values against a qemu-user reference (was 36,941); hardware runs are left to CI. Tier-4 defers to the interpreter while those FPCR fields are set. FPSR exception flags and half-precision arithmetic are still not modelled.
 
 ## 0.7.0
 

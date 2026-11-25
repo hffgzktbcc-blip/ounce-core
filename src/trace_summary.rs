@@ -7,7 +7,8 @@
 //!   implements the contract) and prints or writes a `kind: "divergence"` summary: the first differing step, the
 //!   expected and actual value, and a small window of the steps before it.
 //!
-//! The contract is data only. This file is the ounce-core implementation; ounce-runtime implements it separately.
+//! The contract is data only. This file is the active ounce-core implementation; archived engine names may still appear
+//! in traces as historical producer identifiers.
 
 use crate::cpu::Cpu;
 use crate::mmu::Memory;

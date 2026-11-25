@@ -86,6 +86,36 @@ Mark a PLAN task complete manually with its acceptance evidence. A green build,
 PR creation or agent assertion does not by itself complete the user's scenario.
 Outside dependencies block their dependent action, not all other work.
 
+## Versioning and releases
+
+The project owner tags releases. Until `v1.0.0`, versions are `0.MINOR.PATCH`:
+
+- **Minor (`0.13.0`)**: anything users see or rely on changes. That covers new features or flags, changed CLI
+  output, `ounce.run.v1`, `ounce.trace.v1` or `ounce.repro.v1` schema changes, exit codes, the Rust library API,
+  what the release downloads contain, and emulation changes that alter a guest program's results.
+- **Patch (`0.12.1`)**: fixes only, with no new flags, schema fields or contract keys. That covers correctness
+  fixes, docs and CI.
+- Breaking changes are allowed before 1.0. Each one is listed under **Changed (breaking)** in
+  [CHANGELOG.md](CHANGELOG.md), with a one-line migration note.
+
+Cadence: at most one minor release a week. A patch release ships only when a correctness or security fix can't
+wait. Two releases never ship within 24 hours unless the second fixes a correctness bug in the first.
+
+A release ships only when:
+
+1. CI is green on the full platform matrix, including Windows and macOS (pull requests run only part of it,
+   so run `ci.yml` by hand on the release branch);
+2. `python3 scripts/refresh_notice_review.py --check` passes, and the notice review has no open items;
+3. the release notes (`docs/releases/vX.Y.Z.md`) use absolute links, because GitHub publishes the file as the
+   release page;
+4. every headline number in the release notes links to its evidence and says what it was compared against.
+
+Only the newest patch of the newest minor is supported ([SECURITY.md](SECURITY.md)). `v1.0.0` follows the
+contract freeze in [#481](https://github.com/hffgzktbcc-blip/ounce-core/issues/481); from then on, versions follow
+[Semantic Versioning](https://semver.org/) strictly. The crate stays `publish = false` until the owner decides on
+crates.io. Release tags are annotated `vX.Y.Z` tags; no new component tags (such as the historical
+`diagnosis-v0.2.0`) are created.
+
 ## Sources and integrity
 
 Permissively licensed code may be ported with notices in THIRD_PARTY.md and source
