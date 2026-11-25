@@ -4,11 +4,9 @@
   "cargo_lock_sha256": "8a1a312df6193c2719e9af2eb4f9d024589ca1a039a36ceca236949bb4dc0819",
   "notices_sha256": "d0d7e8e8384c4a0d2496e9dc4367b467fbf39bfe6d1c44752a30cba471bee034",
   "status": "REVIEWED",
-  "reviewer": "Project owner \u2014 chat direction dated 2026-11-09; distribution choice delegated",
+  "reviewer": "Project owner \u2014 chat direction dated 2026-11-09; distribution choice delegated; native-jit licences accepted 2026-11-25",
   "decision_evidence": "docs/releases/v0.6.0-distribution-decision.md",
-  "open_items": [
-    "Owner accepts the licences added by shipping native-jit (Tier-4) in release binaries: Apache-2.0 WITH LLVM-exception, MIT OR Apache-2.0, Zlib (foldhash), MIT (libm); 27 crates, listed in the PR and THIRD_PARTY_NOTICES.txt. First-party ounce-recompiler is MIT."
-  ],
+  "open_items": [],
   "notice_sources": [
     {
       "package": "ab_glyph",
