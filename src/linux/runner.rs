@@ -252,6 +252,7 @@ pub fn run_with_stdin(
     let mut engine = CpuEngine::new(opts.tier);
     let engine_name = engine.name();
     let mut cpu = Cpu::new();
+    cpu.set_linux_counter(opts.deterministic);
     cpu.regs.pc = image.entry;
     cpu.regs.sp = sp;
     let mut proc = if opts.deterministic {
@@ -275,6 +276,9 @@ pub fn run_with_stdin(
                 insns,
                 syscalls,
             );
+        }
+        if opts.deterministic {
+            cpu.counter_ticks = cpu.counter_ticks.max(insns);
         }
         let slice = (opts.max_instructions - insns).min(200_000) as usize;
         let (n, exit) = engine.run_slice(&mut cpu, &mut mmu, slice);
@@ -301,6 +305,7 @@ pub fn run_with_stdin(
                 let nr = cpu.regs.read_x(8);
                 let args: [u64; 6] = std::array::from_fn(|i| cpu.regs.read_x(i as u8));
                 syscalls += 1;
+                proc.set_retired_instructions(insns);
                 if nr == 139 {
                     if proc.signal_return(&mut cpu, &mmu).is_err() {
                         let detail = StopDetail::at("cpu_error", &cpu, svc_pc);
@@ -384,7 +389,10 @@ fn diagnose_fault(cpu: &mut Cpu, mmu: &mut Memory, pc: u64, symbols: &elf::Symbo
                     detail.stop_kind = "memory_fault";
                     detail.fault_addr = Some(m.addr());
                 }
-                CpuError::Breakpoint { .. } | CpuError::Halted(_) | CpuError::BranchTarget { .. } => {}
+                CpuError::Breakpoint { .. }
+                | CpuError::Halted(_)
+                | CpuError::BranchTarget { .. }
+                | CpuError::IllegalSystemRegister { .. } => {}
             }
             e.to_string()
         }

@@ -13,6 +13,7 @@ pub const DC_ZVA_BLOCK: u64 = 64;
 use super::jit_cache::JitBlockCache;
 use super::registers::CpuRegisters;
 use crate::mmu::{Memory, MemoryError};
+use std::time::Instant;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CpuError {
@@ -21,6 +22,19 @@ pub enum CpuError {
 
     #[error("Unimplemented instruction 0x{raw:08X} at PC: 0x{pc:016X}")]
     UnimplementedInstruction { raw: u32, pc: u64 },
+
+    #[error(
+        "Illegal EL0 {access} of system register S3_{op1}_C{crn}_C{crm}_{op2} (encoding {sysreg:#06x}) at PC: 0x{pc:016X}"
+    )]
+    IllegalSystemRegister {
+        access: &'static str,
+        op1: u16,
+        crn: u16,
+        crm: u16,
+        op2: u16,
+        sysreg: u16,
+        pc: u64,
+    },
 
     #[error("BRK #{imm:#x} breakpoint hit at PC: 0x{pc:016X}")]
     Breakpoint { imm: u16, pc: u64 },
@@ -58,6 +72,12 @@ pub struct Cpu {
     /// [`COUNTER_READ_TICKS`] so a loop polling the counter always sees time pass. It depends on
     /// nothing the CPU engines differ in.
     pub counter_ticks: u64,
+    pub counter_hz: u64,
+    /// Whether this CPU is executing a Linux EL0 process rather than a Horizon guest.
+    pub linux_user: bool,
+    /// Host monotonic epoch for Linux `CNTVCT_EL0`. `None` keeps the deterministic/synthetic
+    /// counter used by Horizon and by Linux `--deterministic` runs.
+    pub counter_started: Option<Instant>,
     /// Set once the program touches `FPSR` (or by a harness). Tier-4 then stops compiling FP arithmetic and
     /// compares, which run in the interpreter instead, because compiled code does not accumulate the FPSR
     /// exception flags. FP operations compiled before the first access leave no flags. See `docs/verify/fp-edge`.
@@ -83,10 +103,36 @@ impl Cpu {
             regs: CpuRegisters::new(),
             jit: JitBlockCache::new(),
             counter_ticks: 0x0123_4560,
+            counter_hz: 19_200_000,
+            linux_user: false,
+            counter_started: None,
             exclusive: None,
             pauth: PointerAuth::default(),
             fp_flags_tracked: false,
             last_error: None,
+        }
+    }
+
+    /// Selects the Linux generic-timer source. The virtual counter runs at 1 GHz, so one tick is
+    /// one nanosecond. Deterministic mode advances with retired interpreter instructions; normal
+    /// mode is derived from the host monotonic clock. The Linux runner synchronizes the counter
+    /// after compiled blocks so every engine observes its retired-instruction count.
+    pub fn set_linux_counter(&mut self, deterministic: bool) {
+        self.counter_ticks = 0;
+        self.counter_hz = 1_000_000_000;
+        self.linux_user = true;
+        self.counter_started = (!deterministic).then(Instant::now);
+    }
+
+    fn illegal_system_register(&self, sysreg: u16, is_read: bool) -> CpuError {
+        CpuError::IllegalSystemRegister {
+            access: if is_read { "MRS" } else { "MSR" },
+            op1: (sysreg >> 11) & 7,
+            crn: (sysreg >> 7) & 15,
+            crm: (sysreg >> 3) & 15,
+            op2: sysreg & 7,
+            sysreg,
+            pc: self.regs.pc,
         }
     }
 
@@ -137,6 +183,9 @@ impl Cpu {
     /// Fetches, basic-block JIT-compiles/looks up, and executes a single AArch64 instruction, then folds the
     /// floating-point exception flags it raised into `FPSR`.
     pub fn step(&mut self, mmu: &mut Memory) -> Result<StepResult, CpuError> {
+        if self.counter_hz == 1_000_000_000 && self.counter_started.is_none() {
+            self.counter_ticks = self.counter_ticks.wrapping_add(1);
+        }
         let res = self.step_inner(mmu);
         let raised = softfp::take_flags();
         if raised != 0 {
@@ -932,8 +981,10 @@ impl Cpu {
                 // 0x5E82 = TPIDR_EL0   (S3_3_C13_C0_2)
                 // 0x5E83 = TPIDRRO_EL0 (S3_3_C13_C0_3) - Horizon TLS Pointer
                 // 0x5A10 = NZCV        (S3_3_C4_C2_0)
-                // 0x5F00 = CNTFRQ_EL0  (19,200,000 Hz Switch 2 hardware timer frequency)
+                // 0x5801 = CTR_EL0     (64-byte I/D cache lines)
+                // 0x5F00 = CNTFRQ_EL0  (1 GHz for Linux; 19.2 MHz Horizon default)
                 // 0x5F01 = CNTPCT_EL0  (Switch 2 physical timer counter)
+                // 0x5F02 = CNTVCT_EL0  (Linux virtual timer counter)
                 // 0x5807 = DCZID_EL0   (S3_3_C0_C0_7)
                 // 0x5A20 = FPCR        (S3_3_C4_C4_0), stored only
                 // 0x5A21 = FPSR        (S3_3_C4_C4_1), QC and the cumulative exception flags modelled
@@ -947,20 +998,24 @@ impl Cpu {
                         0x5A10 => self.regs.pstate.to_bits() as u64,
                         0x5A20 => self.regs.fpcr as u64,
                         0x5A21 => self.regs.fpsr as u64,
-                        0x5F00 => 19_200_000,
+                        0x5801 => 0x8444_c004,
+                        0x5F00 => self.counter_hz,
                         // DCZID_EL0: DC ZVA permitted, block = 2^4 words = DC_ZVA_BLOCK bytes
                         0x5807 => DC_ZVA_BLOCK.trailing_zeros() as u64 - 2,
-                        // ID_AA64ISAR1_EL1: API = 1, GPI = 1 (IMPLEMENTATION DEFINED PAC
-                        // algorithm, see `pauth`); APA/GPA = 0 (not QARMA)
-                        0x4031 => 1 << 8 | 1 << 28,
-                        // ID_AA64PFR1_EL1: BT = 1 (FEAT_BTI)
-                        0x4021 => 1,
+                        // Horizon exposes its PAC/BTI discovery registers. Linux only exposes ID
+                        // registers when HWCAP_CPUID is advertised; ounce-core does not advertise it.
+                        0x4031 if !self.linux_user => 1 << 8 | 1 << 28,
+                        0x4021 if !self.linux_user => 1,
                         0x5F01 => {
                             let now = self.counter_ticks;
                             self.counter_ticks = now.wrapping_add(COUNTER_READ_TICKS);
                             now
                         }
-                        _ => 0,
+                        0x5F02 => match self.counter_started {
+                            Some(started) => started.elapsed().as_nanos().min(u64::MAX as u128) as u64,
+                            None => self.counter_ticks,
+                        },
+                        _ => return Err(self.illegal_system_register(sysreg, true)),
                     };
                     self.regs.write_x(rt, val);
                 } else {
@@ -971,7 +1026,7 @@ impl Cpu {
                         0x5A10 => self.regs.pstate.set_bits(val as u32),
                         0x5A20 => self.regs.fpcr = val as u32,
                         0x5A21 => self.regs.fpsr = val as u32 & super::registers::FPSR_MASK,
-                        _ => {}
+                        _ => return Err(self.illegal_system_register(sysreg, false)),
                     }
                 }
                 self.regs.advance_pc();
