@@ -6,6 +6,18 @@ Run one homebrew program and, if you want a machine-readable result, write an
 
 You need Rust 1.89 or newer (edition 2024). Default headless builds require zero C system libraries; pass `--features host-io` only if you want desktop audio output and physical controller input. Only that opt-in feature needs `libasound2-dev libudev-dev` on Debian or Ubuntu.
 
+If downloading a prebuilt archive from [Releases](https://github.com/hffgzktbcc-blip/ounce-core/releases) instead of building from source, verify its SHA-256 checksum first:
+
+```sh
+# Single asset verification:
+shasum -a 256 -c ounce-core-macos-arm64.tar.gz.sha256    # macOS
+sha256sum -c ounce-core-linux-arm64.tar.gz.sha256        # Linux
+
+# Combined checksums (checks available files, ignoring missing ones):
+shasum -a 256 --ignore-missing -c SHA256SUMS             # macOS
+sha256sum --ignore-missing -c SHA256SUMS                 # Linux
+```
+
 ```sh
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core

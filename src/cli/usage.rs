@@ -270,7 +270,7 @@ pub(crate) fn print_specs() {
     };
 
     let header_text = format!(
-        "  🎮  {}OUNCE-CORE v{}{} — TEGRA T239 HARDWARE & RUNTIME SYSTEM PROFILE",
+        "  {}OUNCE-CORE v{}{} — ARM64 EXECUTION & VERIFICATION RUNTIME",
         s.bold,
         env!("CARGO_PKG_VERSION"),
         s.reset
@@ -282,12 +282,14 @@ pub(crate) fn print_specs() {
     println!("{}│{}{}{}│{}", s.cyan, header_text, " ".repeat(pad), s.cyan, s.reset);
     println!("{}╰{}╯{}", s.cyan, "─".repeat(BOX_WIDTH - 2), s.reset);
     println!();
+
+    let feat_state = |enabled: bool| if enabled { "enabled" } else { "disabled" };
     println!(
-        "  {}Target Platform{}   : {}NVIDIA Tegra T239 'Drake'{} (Codename: 'Ounce' / Horizon OS FW 23.0.1 ABI)",
+        "  {}Target Architecture{}: {}ARMv8.5-A AArch64 (PAC + BTI){}",
         s.bold, s.reset, s.green, s.reset
     );
     println!(
-        "  {}Execution Model{}   : {}AArch64 Systems Research Runtime & Translation Layer{}",
+        "  {}Execution Model{}   : {}ARM64 Multi-Engine Execution & Differential Verification{}",
         s.bold, s.reset, s.green, s.reset
     );
     println!(
@@ -295,7 +297,20 @@ pub(crate) fn print_specs() {
         s.bold, s.reset, host_arch, host_os, ptr_width, profile
     );
     println!(
-        "  {}Legal Posture{}     : {}No keys, firmware, or retail content are distributed{}",
+        "  {}Optional Engines{}  : native-jit (Tier-4): {}, nce (native): {}",
+        s.bold,
+        s.reset,
+        feat_state(cfg!(feature = "native-jit")),
+        feat_state(cfg!(feature = "nce")),
+    );
+    println!(
+        "  {}Optional Features{} : host-io: {}",
+        s.bold,
+        s.reset,
+        feat_state(cfg!(feature = "host-io")),
+    );
+    println!(
+        "  {}Project Notice{}    : {}Not affiliated with Nintendo or NVIDIA; no proprietary material distributed{}",
         s.bold, s.reset, s.green, s.reset
     );
     println!();
@@ -316,11 +331,12 @@ pub(crate) fn print_specs() {
         "Vector Engine       : ",
         "128-bit ARM NEON Advanced SIMD & IEEE-754 FP Single/Double",
     );
-    print_row(
-        &s,
-        "Execution Engine    : ",
-        "Tier-1 block cache, Tier-2 chained blocks, Tier-3 super-blocks (host MIPS measured by Stage 20)",
+    let engines_info = format!(
+        "Tier-1/2/3 interpreter & super-blocks; Tier-4 JIT ({}); NCE ({})",
+        feat_state(cfg!(feature = "native-jit")),
+        feat_state(cfg!(feature = "nce")),
     );
+    print_row(&s, "Execution Engines   : ", &engines_info);
     print_row(
         &s,
         "Virtual MMU         : ",

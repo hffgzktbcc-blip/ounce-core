@@ -21,7 +21,7 @@ per-harness README, the README wins.
 
 ## Known gaps in what the Linux ELF runner and CPU models execute (24 Nov 2026)
 
-These are verified against the source at `main` (14b3c4d) and the [Big Tech run](verify/bigtech-2026-11-23.md):
+These are verified against the source at `main` (18cf538, v0.12.0) and the [Big Tech run](verify/bigtech-2026-11-23.md):
 
 - **No `FEAT_AES`, `FEAT_SHA1` or `FEAT_SHA2`.** Programs that use them stop or skip. In the s2n-bignum run, 13 AES-dependent tests were skipped, not passed.
 - **`AT_HWCAP` is `0x20193`** (FP, ASIMD, PMULL, CRC32, ATOMICS, SHA3). It does not advertise AES, SHA1 or SHA2.

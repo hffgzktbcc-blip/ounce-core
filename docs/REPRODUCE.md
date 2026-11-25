@@ -7,7 +7,7 @@ To test a **static ARM64 Linux ELF** without devkitPro, start with the [communit
 ## What you are reproducing
 
 For each harness listed in `docs/verify/differential.json` (floating-point and integer-vector
-instruction tests, the QC-flag tests, and LZ4, xxHash, SQLite, Lua, plus zlib, cJSON, TinyExpr, Monocypher and wasm3), the script:
+instruction tests, the QC-flag tests, and LZ4, xxHash, SQLite, Lua, plus zlib, cJSON, Monocypher and wasm3), the script:
 
 1. fetches the pinned upstream source (a git commit, or a tarball whose SHA-256 is checked);
 2. compiles the shared C cases for your host with `cc -O1`. This is the **reference**;
@@ -29,6 +29,7 @@ instruction tests, the QC-flag tests, and LZ4, xxHash, SQLite, Lua, plus zlib, c
   ```sh
   sudo dkp-pacman -S switch-dev      # `sudo pacman -S switch-dev` on devkitPro's Linux packages
   export DEVKITPRO=/opt/devkitpro
+  export PATH=$DEVKITPRO/devkitA64/bin:$PATH
   ```
 - Network access (upstream sources are downloaded and hash-checked).
 
@@ -56,7 +57,7 @@ Per harness the script prints one line, for example:
 qc-flag: committed-vs-fresh-host=identical, tier3=identical, tier4=identical, native=identical
 ```
 
-and finishes with either `all compared outputs identical` (exit status 0) or `FAILED` (exit status 1).
+and finishes with either `all compared outputs identical` (exit status 0) or `FAILED` (exit status 1). When run without `--nro` (or without prebuilt NROs), the script plainly notes that engine comparisons were skipped (`all compared outputs identical (engine comparisons skipped; pass --nro to verify engines)`).
 Each check is `identical`, `DIFFERENT`, or `skipped (...)`.
 
 | Check | Meaning if `DIFFERENT` |
