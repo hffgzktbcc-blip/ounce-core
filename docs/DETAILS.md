@@ -112,8 +112,8 @@ Each number quoted in the README, with what it was compared against, the `ounce-
 | MicroPython 581/582 `tests/basics` | `qemu-aarch64` | `baec66b` | No, scripts not committed |
 | QuickJS 5/5 at `-O3 -mcpu=apple_m1`; libpng 168/168; libdeflate 1,800 round-trips; bzip2 140/140; brotli 205/205; PCRE2 51/51 | Reference not recorded in the repo | `baec66b` | No, scripts not committed (the older [`quickjs-harness`](verify/quickjs-harness/README.md) is a different, committed harness) |
 | Kahan `Paranoia` 4/4; Shewchuk predicates 90,000 cases; physics/quantum 9/9 | Paranoia's own verdict; exact arithmetic, `qemu-aarch64` and x86 for Shewchuk; invariants for physics/quantum (classical C simulations, no quantum hardware) | `baec66b` | No, sources and scripts not committed |
-| 102 paper checks | Published test values, plus a native x86-64 build of the same source; Tier-3 only | Not recorded (release notes say `baec66b`) | Yes: [`papers/run_all.sh`](verify/papers/README.md) |
-| Big Tech libraries: BLAKE3 822/822, libmpdec 148/148, s2n-bignum 384 passed / 13 skipped (397/397, 0 skipped, after `#570` added `FEAT_AES`: independent rerun on 24 Nov, PR head `1aa08b0`), libwebp 57/57, simdjson 6/6, secp256k1 119/119 (Tier-4 only), SGP4 962/1,222 (mostly a host-libm difference, per the [25 Nov external audit](audits/2026-11-25-external-audit.md)) | A native Apple M3 build of the same driver, or the suite's own checks | `0bce1d3` (`14b3c4d` for simdjson `-O3` and SGP4 `-O3`) | Partly. First-party drivers and build commands are in [`verify/bigtech/`](verify/bigtech/README.md); upstream sources, native oracles and raw logs are not. |
+| 102 paper checks | Published test values, plus a native x86-64 build of the same source; Tier-3 only | Not recorded (release notes say `baec66b`) | Yes: [`papers/run_all.sh`](verify/papers/run_all.sh) |
+| Big Tech libraries: BLAKE3 822/822, libmpdec 148/148, s2n-bignum 384 passed / 13 skipped (397/397, 0 skipped, after `#570` added `FEAT_AES`: a second rerun on 24 Nov by the Neon bot (an AI agent) on the maintainer's Mac, on PR `#570`'s head `1aa08b0`, squash-merged as `5247709`; not an outside reproduction), libwebp 57/57, simdjson 6/6, secp256k1 119/119 (Tier-4 only), SGP4 962/1,222 (mostly a host-libm difference, per the [25 Nov external audit](audits/2026-11-25-external-audit.md)) | A native Apple M3 build of the same driver, or the suite's own checks | `0bce1d3` (`14b3c4d` for simdjson `-O3` and SGP4 `-O3`) | Partly. First-party drivers and build commands are in [`verify/bigtech/`](verify/bigtech/README.md); upstream sources, native oracles and raw logs are not. |
 | 51-harness Linux ARM64 ELF matrix | Native ARM64 Linux host output per [`differential.json`](verify/differential.json) | each CI commit | Yes: [`scripts/run_linux_arm64_matrix.py`](../scripts/run_linux_arm64_matrix.py). A pull request runs 3 programs (`lz4`, `xxhash`, `lua`); a push to `main` runs all 51. |
 | 50/50 first-frame NRO oracles | Registered pixel oracles, interpreter and Tier-3 | `c47fa14` snapshot | Yes ([`scripts/corpus_verify.py`](../scripts/corpus_verify.py)); needs the devkitA64 Docker image |
 | 199-op FP workload on Apple M3 | Apple M3 hardware | [result folder](verify/fp-workload/result-2026-11-19-apple-m3-199ops/summary.tsv) | Yes: [`verify/fp-workload/run.sh`](verify/fp-workload/run.sh) |
@@ -215,7 +215,7 @@ Any other code, ported or new, that genuinely needs `unsafe` goes into an isolat
 
 ## Commands and setup
 
-Install, build and first-run steps are in the [README](../README.md#run-it-locally). This is the full reference.
+Install, build and first-run steps are in the [README](../README.md#try-it). This is the full reference.
 
 ### Prerequisites
 
@@ -402,7 +402,8 @@ ounce-core/
 ├── .github/workflows/ # Cross-platform CI
 ├── assets/            # README artwork and other assets
 ├── crates/
-│   └── ounce-recompiler/ # Optional Tier-4 native code and executable-memory boundary
+│   ├── ounce-recompiler/ # Optional Tier-4 native code and executable-memory boundary
+│   └── ounce-nce/        # Optional native execution on AArch64 hosts (NRO only)
 ├── docs/design/       # Architecture and implementation notes
 ├── src/               # Runtime, CPU, GPU, kernel, loader and host integrations
 ├── tests/fixtures/nro/ # Checked-in homebrew integration fixtures
