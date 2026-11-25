@@ -32,13 +32,15 @@ without IXC and a flushed input raises IDC; half-precision flushes raise nothing
   and trace format work. Only the interpreter/Tier-3/Tier-4 columns are claims about Ounce-Core.
 - Under qemu-user the reference is qemu's softfloat, not silicon. Use it to debug the harness, not as evidence of hardware
   agreement. Run it with `HOST_CC='python3 -m ziglang cc -target aarch64-linux-musl' HOST_RUN=qemu-aarch64 run.sh OUT`.
-- Words every engine reports `unsupported`: half-precision arithmetic, `FRECPX` (the scalar `FRECPE/FRECPS/FRSQRTE/FRSQRTS` and `FRINT32*/FRINT64*` forms were implemented on 2026-11-17, see [../fp-workload/](../fp-workload/README.md); regenerate `summary.json` for the live list), scalar
-  `FMULX`, scalar and vector `FADDP`, vector `FRINT*`, vector `FCVT{N,M,A,P}{S,U}`, `FCVT` to/from half. The full list is
-  `words_always_unsupported` in `summary.json`.
+- The committed `summary.json` records unsupported words from its dated run; several have since been implemented, including
+  scalar half-precision arithmetic. `FRECPX`, scalar `FMULX`, scalar and vector `FADDP`, vector `FRINT*`, vector
+  `FCVT{N,M,A,P}{S,U}`, and some `FCVT` to/from half forms remain gaps. The recorded list is
+  `words_always_unsupported` in `summary.json`; regenerate it for the live list.
 - FPCR RMode, FZ and DN are modelled for scalar and vector add/sub/mul/div/fused multiply-add/sqrt, FRINT*, FCVT between
   single and double, SCVTF/UCVTF/FCVTZ*, and compares (`src/cpu/softfp.rs`, #363), and the exception flags of all of
   those plus FMAX/FMIN/FMAXNM/FMINNM (also the pairwise, reduction and half-precision forms). A mismatch at any FPCR
-  value in the table is a finding. Not modelled: FZ16 and half-precision arithmetic, and trap enables (FPCR.IOE..IDE).
+  value in the table is a finding. FZ16 and supported half-precision arithmetic now use the same soft-float machinery;
+  trap enables (FPCR.IOE..IDE) are not modelled.
 - **Tier-4 and flags.** Compiled FP does not accumulate exception flags. Once the program touches FPSR (the first
   `MRS`/`MSR FPSR`, or the replay harness) Tier-4 drops its FP-containing translations and leaves FP arithmetic and
   compares to the interpreter, so a program that clears or reads FPSR sees correct flags from then on. Flags raised by

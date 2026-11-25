@@ -174,7 +174,7 @@ pub(crate) fn print_usage() {
     println!();
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
     println!(
-        "    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)",
+        "    {}--cpu={}<tier>            Engine: tier3 (decoded block cache, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)",
         s.green, s.reset
     );
     println!(
@@ -319,7 +319,7 @@ pub(crate) fn print_specs() {
     print_row(
         &s,
         "Architecture        : ",
-        "8x ARM Cortex-A78C (Octa-Core Preemptive Multi-Core Scheduler)",
+        "Single-threaded AArch64 execution for bounded program testing",
     );
     print_row(
         &s,
@@ -350,16 +350,16 @@ pub(crate) fn print_specs() {
     print_box_bottom(&s);
     println!();
 
-    print_box_top(&s, "GPU Subsystem: NVIDIA Ampere Custom GA10B/GA10F");
+    print_box_top(&s, "Graphics Emulation");
     print_row(
         &s,
         "Architecture        : ",
-        "NVIDIA Ampere GA10B/GA10F Derivative (Tegra T239 Custom)",
+        "Bounded Maxwell/Ampere guest command emulation",
     );
     print_row(
         &s,
-        "Compute Cores       : ",
-        "12 Streaming Multiprocessors (~1,536 CUDA Cores, SM 8.7)",
+        "Execution           : ",
+        "Software paths, with optional host-GPU presentation",
     );
     print_row(
         &s,
@@ -389,12 +389,8 @@ pub(crate) fn print_specs() {
     print_box_bottom(&s);
     println!();
 
-    print_box_top(&s, "Memory Subsystem & High-Speed Interconnect");
-    print_row(
-        &s,
-        "System DRAM         : ",
-        "12 GB LPDDR5X (128-bit Bus @ 6400 MT/s, ~102.4 GB/s Bandwidth)",
-    );
+    print_box_top(&s, "Guest Memory Model");
+    print_row(&s, "Address Space       : ", "Sparse guest pages allocated on demand");
     print_row(
         &s,
         "VRAM Framebuffer    : ",
@@ -413,7 +409,7 @@ pub(crate) fn print_specs() {
     print_box_bottom(&s);
     println!();
 
-    print_box_top(&s, "Audio DSP, Controllers & Joy-Con 2 Inputs");
+    print_box_top(&s, "Audio and Input Emulation");
     print_row(
         &s,
         "Audio DSP Mixer     : ",
@@ -426,8 +422,8 @@ pub(crate) fn print_specs() {
     );
     print_row(
         &s,
-        "Joy-Con 2 Subsystem : ",
-        "Attached Rail, Wireless Bluetooth, & Dual-Grip Modes (0x200)",
+        "Controller Input    : ",
+        "Guest HID state from configured host input",
     );
     print_row(
         &s,
@@ -463,15 +459,11 @@ pub(crate) fn print_specs() {
         "Active Services     : ",
         "set:sys, am:appletOE, vi:m, hid, fsp-srv, ro:1, pl:u, time:u, nvdrv",
     );
-    print_row(
-        &s,
-        "Firmware Target     : ",
-        "Horizon OS System Version 23.0.1 (Target ABI)",
-    );
+    print_row(&s, "Firmware Target     : ", "Selected Horizon service ABI behaviours");
     print_row(
         &s,
         "Process Model       : ",
-        "Preemptive Multi-Threaded Scheduler with Core Affinity Masks",
+        "Single host thread; guest scheduling is emulated",
     );
     print_box_bottom(&s);
     println!();
