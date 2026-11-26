@@ -29,10 +29,14 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture --pres
 Tier-3. `--cpu=interpreter` is one instruction at a time.
 Guest arguments that start with `-` go after `--`, for example `... hello.nro -- --verbose`; before `--`,
 an unknown option is refused with exit status 2 rather than dropped (`ounce-core run-nro --help`).
-`--cpu=tier4` works in release downloads from v0.13.0 on; v0.12.0 downloads and source builds without the feature print "Not available: rebuild with --features native-jit; running Tier-3", so use `cargo build --release --features native-jit` there. On macOS the binary is ad-hoc signed by the linker with no hardened runtime, so Tier-4 needs no entitlement; if you re-sign it with `codesign --options runtime`, add `com.apple.security.cs.allow-jit`.
+`--cpu=tier4` works in release downloads from v0.13.0 on; v0.12.0 downloads and source builds without the feature print "Not available: rebuild with --features native-jit; running Tier-3" and report `silent_fallback` true, so use `cargo build --release --features native-jit` there. On macOS the binary is ad-hoc signed by the linker with no hardened runtime, so Tier-4 needs no entitlement; if you re-sign it with `codesign --options runtime`, add `com.apple.security.cs.allow-jit`.
 `--cpu=native` runs a homebrew NRO on an AArch64 host and needs
-`--features nce`; without that feature the run stays on the interpreter and
-says so.
+`--features nce`; without that feature the run uses the interpreter, prints a `[CPU]` warning on stderr and sets
+`silent_fallback` to true (with `tier` `interpreter`) in the `ounce.run.v1` report.
+An unknown `--cpu` or `OUNCE_CPU` value (`--cpu=interp3`) is a usage error: exit status 2, with the valid names listed. Every command accepts
+the same names and aliases: `interpreter` (`interp`, `tier1`), `tier3` (`3`), `tier4` (`4`), `native` (`nce`).
+The same rule covers `--cpu=tier4` on a build or host without Tier-4: Tier-3 runs, stderr says so, and the report has `tier` `tier3` and `silent_fallback` true.
+Check `silent_fallback` before you trust a comparison between engines.
 
 ## A JSON report
 

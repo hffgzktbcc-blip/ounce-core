@@ -270,6 +270,10 @@ pub fn cli_main() {
         eprintln!("[guest-gpu] OUNCE_GPU_BACKEND expects cpu or host; host requires --features gpu-present");
         std::process::exit(2);
     }
+    if let Err(e) = cpu::CpuTier::check_env() {
+        eprintln!("[CPU] {e}");
+        std::process::exit(2);
+    }
     // `--present=<auto|gpu|minifb|headless>` and `--cpu=<interpreter|tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
@@ -329,11 +333,12 @@ pub fn cli_main() {
             continue;
         }
         if let Some(value) = arg.strip_prefix("--cpu=") {
-            match cpu::CpuTier::parse(value) {
-                Some(tier) => cpu::CpuTier::set_cli_override(tier),
-                None => eprintln!(
-                    "[CPU] Unknown --cpu value '{value}' (expected interpreter, tier3, tier4 or native); ignoring."
-                ),
+            match cpu::CpuTier::parse_arg(value) {
+                Ok(tier) => cpu::CpuTier::set_cli_override(tier),
+                Err(e) => {
+                    eprintln!("[CPU] --cpu: {e}");
+                    std::process::exit(2);
+                }
             }
             continue;
         }

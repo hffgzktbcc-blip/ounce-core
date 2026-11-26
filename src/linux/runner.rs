@@ -246,7 +246,7 @@ pub fn run_with_stdin(
         }
     };
     if opts.tier == CpuTier::Native {
-        let why = "--cpu=native is not supported by run-elf (use tier3 or tier4)".into();
+        let why = "--cpu=native is not supported by run-elf (valid for run-elf: interpreter (alias interp, tier1), tier3 (alias 3), tier4 (alias 4))".into();
         return fail(why, EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0);
     }
     let mut engine = CpuEngine::new(opts.tier);

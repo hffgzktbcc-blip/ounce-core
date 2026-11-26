@@ -54,7 +54,7 @@ Build, run the hello fixture, and write an `ounce.run.v1` report: [docs/QUICKSTA
 
 **2. On your machine.** Download a prebuilt binary from [Releases](https://github.com/hffgzktbcc-blip/ounce-core/releases) (from the next release, v0.13.0, downloads include all three engines: Interpreter, Tier-3 and Tier-4; v0.12.0 downloads do not include Tier-4) or build from source (pure-Rust headless default on Rust 1.89+ with zero C system libraries; pass `--features host-io` only if desktop audio/controller input is wanted, which needs `libasound2-dev libudev-dev` on Debian/Ubuntu; `--workspace` / `--features native-jit` requires current stable Rust).
 
-Release downloads up to v0.12.0 and default `cargo install --git` builds include the Interpreter and Tier-3 engines. On these builds, requesting `--cpu=tier4` prints `Not available: rebuild with --features native-jit; running Tier-3` and falls back to Tier-3. To get the Tier-4 JIT engine from source, build with `--features native-jit`:
+Release downloads up to v0.12.0 and default `cargo install --git` builds include the Interpreter and Tier-3 engines. On these builds, requesting `--cpu=tier4` prints `Not available: rebuild with --features native-jit; running Tier-3` on stderr, runs Tier-3 and reports `tier` `tier3` with `silent_fallback` true in `ounce.run.v1` (the fallback is never silent). An unknown `--cpu` value exits 2. To get the Tier-4 JIT engine from source, build with `--features native-jit`:
 
 ```bash
 # Install with Tier-4 JIT support:
