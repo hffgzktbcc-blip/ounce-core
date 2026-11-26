@@ -1285,3 +1285,64 @@ fn native_without_nce_runs_the_interpreter_visibly() {
         out.stderr
     );
 }
+
+#[test]
+fn run_without_cpu_flag_executes_on_tier3() {
+    // The "[CPU] Block engine: <name>" line names the engine that executes the guest; the report's `tier` must agree.
+    let dir = scratch("default_tier3");
+    let (file, report) = (dir.join("p.nro"), dir.join("r.json"));
+    std::fs::write(&file, nro(&NRO_EXIT)).unwrap();
+    for cmd in ["run", "run-nro"] {
+        let out = command(&[
+            cmd,
+            file.to_str().unwrap(),
+            "--present=headless",
+            &format!("--report-json={}", report.display()),
+        ]);
+        assert_eq!(code(&out), 0, "{cmd}: {}", String::from_utf8_lossy(&out.stderr));
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            text.contains("[CPU] Block engine: Tier-3"),
+            "{cmd} with no --cpu must run Tier-3: {text}"
+        );
+        let doc: Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+        assert_eq!(
+            (doc["tier"].as_str(), doc["silent_fallback"].as_bool()),
+            (Some("tier3"), Some(false)),
+            "{cmd}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn block_engine_unimplemented_instruction_stop_matches_the_interpreter() {
+    // `udf #0` (0x00000000) is unimplemented. Every engine must stop the same way: `unimplemented_insn`, exit code 10,
+    // the opcode and the faulting pc filled in.
+    let stops: Vec<_> = ["interpreter", "tier3", "tier4"]
+        .iter()
+        .map(|cpu| {
+            let out = run_nro_bytes("udf_engines", &[0x0000_0000], &[&format!("--cpu={cpu}")], &[]);
+            let report = out.report.clone().expect("report");
+            (cpu, out.status, report)
+        })
+        .collect();
+    for (cpu, status, report) in &stops {
+        assert_eq!(report["stop_kind"], "unimplemented_insn", "--cpu={cpu}: {report}");
+        assert_eq!(report["exit_code"], 10, "--cpu={cpu}");
+        assert_eq!(
+            *status, stops[0].1,
+            "--cpu={cpu}: same process status as the interpreter"
+        );
+        assert_eq!(report["opcode"], 0, "--cpu={cpu}: opcode is filled in");
+        assert_eq!(
+            report["pc"], stops[0].2["pc"],
+            "--cpu={cpu}: same faulting pc as the interpreter"
+        );
+        assert_eq!(report["insns_executed"], stops[0].2["insns_executed"], "--cpu={cpu}");
+    }
+}
