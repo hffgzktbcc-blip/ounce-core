@@ -210,7 +210,7 @@ def emit_cmp(a, out, stats):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gen", required=True)
-    ap.add_argument("--count", type=int, default=0, help="cases per op and rounding mode, sampled evenly from the level-1 enumeration (0 = all, about 46k or more)")
+    ap.add_argument("--count", type=int, default=2000, help="cases per op and rounding mode, sampled evenly from the level-1 enumeration (default 2000; 0 = every case, which holds millions of rows in memory: mulAdd alone is over 6M, and a full run needs about 14 GB of RAM)")
     ap.add_argument("--level", default="1")
     ap.add_argument("--ops", default="add,sub,mul,div,sqrt,mulAdd,cvt,from_int,to_int,round,cmp")
     a = ap.parse_args()
