@@ -278,8 +278,6 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
             }
             return;
         }
-        #[cfg(not(feature = "nce"))]
-        eprintln!("[CPU] --cpu=native needs a build with `--features nce`; running the interpreter.");
     }
 
     let (mut cpu, mut mmu, mut kernel) = setup_vm();

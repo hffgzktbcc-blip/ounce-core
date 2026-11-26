@@ -29,7 +29,7 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
   `clone`/`clone3` with thread flags (refused with `ENOSYS` and a one-time note on stderr; there are no guest threads).
 - Test programs: `tests/linux-elf/src/*.c`, built by `tests/linux-elf/src/build.sh` (clang plus LLD,
   or rustup's `rust-lld`) into `tests/linux-elf/bin/` (each ELF is about 1-2 KB). Tests run each
-  program on `tier3` and `tier4` (Tier-4 falls back to Tier-3 without `--features native-jit`).
+  program on `tier3` and `tier4` (without `--features native-jit` Tier-4 runs Tier-3 with a stderr warning and `silent_fallback` true in the report; the engine-comparison tooling treats that as not checked).
 
 ## Honest limits
 
@@ -46,7 +46,7 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
   use virtual ranges without page buffers; `mprotect` commits bounded portions, and `munmap`
   or fixed anonymous mappings trim/replace them. Environment is empty; `AT_RANDOM` is fixed bytes (deterministic).
 - Time: `clock_gettime` reads the host clock by default. `--deterministic` supplies a fixed virtual clock (below), not physical time.
-- `--cpu=native` is rejected. Missing-instruction failures belong to the decoder/interpreter; this
+- `--cpu=native` is rejected, and an unknown `--cpu` value is a usage error (exit 2). Missing-instruction failures belong to the decoder/interpreter; this
   runner only reports them (instruction word plus the interpreter's error).
 - Instruction budget default is 2 billion; the interpreter-class speed is about 20 MIPS.
 

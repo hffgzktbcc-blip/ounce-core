@@ -174,7 +174,7 @@ pub(crate) fn print_usage() {
     println!();
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
     println!(
-        "    {}--cpu={}<tier>            Engine: tier3 (decoded block cache, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)",
+        "    {}--cpu={}<tier>            Engine: interpreter, tier3 (decoded block cache, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce); an engine that cannot run falls back with a warning and silent_fallback in the report",
         s.green, s.reset
     );
     println!(

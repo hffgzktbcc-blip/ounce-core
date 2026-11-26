@@ -4,7 +4,7 @@
 
 Using an out-of-band report file keeps guest `svcOutputDebugString` output on `stdout` completely separate from engine diagnostics and preserves clean MIT / GPL-3.0-or-later process isolation.
 
-On ounce-core, `run`, `run-nro` and `run-elf` write the file. For `run` / `run-nro`, `silent_fallback` is always `false`, even when a requested Tier-4 build falls back to Tier-3; `run-elf` sets it to `true` in that case. Historical reports from archived `ounce-runtime` also contain `frames_presented` and `framebuffer_hash`; the two implementations did not use the same `stop_kind` for every fault.
+On ounce-core, `run`, `run-nro` and `run-elf` write the file. `silent_fallback` is `true` on all three when the requested engine could not run (Tier-4 without `native-jit` or on an unsupported host, `native` without `nce`); `tier` then names the engine that ran, and stderr carries a one-line warning. Before the next release `run` / `run-nro` always wrote `false` (v0.12.0 and earlier). Historical reports from archived `ounce-runtime` also contain `frames_presented` and `framebuffer_hash`; the two implementations did not use the same `stop_kind` for every fault.
 
 Every field is a flat scalar or `null`, preserving compatibility with the published schema and saved reports. New fields are additive: consumers must ignore fields they do not know. `src/run_report.rs` tests that the emitted fields equal the table below and that the `exit_code` mapping matches the second table.
 
