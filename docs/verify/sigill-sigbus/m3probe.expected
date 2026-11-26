@@ -1,0 +1,30 @@
+udf #0                       signals=1 sig=4 code=2 addr_is_pc pc_is_insn
+reserved 0x00010000          signals=1 sig=4 code=2 addr_is_pc pc_is_insn
+msr sctlr_el1                signals=1 sig=4 code=2 addr_is_pc pc_is_insn
+mrs id_aa64isar0_el1         signals=1 sig=4 code=2 addr_is_pc pc_is_insn
+ldxr x misaligned by 1       signals=0 sig=0 code=0 addr_is_zero pc_is_other
+   fault addr == buf+1: 0
+ldxr w misaligned by 2       signals=0 sig=0 code=0 addr_is_zero pc_is_other
+ldxrh misaligned by 1        signals=0 sig=0 code=0 addr_is_zero pc_is_other
+stxr x misaligned by 4       signals=0 sig=0 code=0 addr_is_zero pc_is_other
+ldxp x misaligned by 8       signals=1 sig=10 code=1 addr_is_other pc_is_insn
+ldxp w misaligned by 4       signals=0 sig=0 code=0 addr_is_zero pc_is_other
+ldar x misaligned by 1       signals=0 sig=0 code=0 addr_is_zero pc_is_other
+ldar w misaligned by 2       signals=0 sig=0 code=0 addr_is_zero pc_is_other
+stlr x misaligned by 1       signals=0 sig=0 code=0 addr_is_zero pc_is_other
+ldxr x crossing 16B (+12)    signals=1 sig=10 code=1 addr_is_other pc_is_insn
+   fault addr == buf+12: 1
+ldxr w crossing 16B (+14)    signals=1 sig=10 code=1 addr_is_other pc_is_insn
+ldxrh crossing 16B (+15)     signals=1 sig=10 code=1 addr_is_other pc_is_insn
+stxr x crossing 16B (+12)    signals=1 sig=10 code=1 addr_is_other pc_is_insn
+ldaxp x misaligned by 1      signals=1 sig=10 code=1 addr_is_other pc_is_insn
+ldxr;stxr same addr/size       status=0
+ldxr;clrex;stxr                status=1
+clrex;stxr (no ldxr)           status=1
+ldxr;stxr;stxr (second)        status=1
+ldxr;str same addr;stxr        status=1
+ldxr;str other line;stxr       status=0
+ldxr;str same line +8;stxr     status=1
+ldxr [p];stxr [p+8]            status=0
+ldxr w;stxr x same addr        status=0
+ldxr x;stxr w same addr        status=0

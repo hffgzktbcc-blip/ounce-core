@@ -406,6 +406,7 @@ pub(crate) fn format_instruction(raw: u32, insn: Instruction) -> String {
         ),
         Svc { imm: n } => format!("svc #0x{n:x}"),
         Nop => "nop".into(),
+        Clrex => "clrex".into(),
         FpData2 { rd, rn, rm, op, esize } => {
             format!("{} {}, {}, {}", fp_op(op), fp(rd, esize), fp(rn, esize), fp(rm, esize))
         }

@@ -83,9 +83,9 @@ provokes each reachable `stop_kind` with a real program and checks the pair agai
 | 0 | `clean_exit` | NRO `mov w0,#0; svc #7`; `exitcode.elf` |
 | 0 | `frame_limit` | NRO that presents forever with `--max-frames 2` |
 | 0 | `window_closed` | **not reachable in tests** (needs `--gui` and a window) |
-| 10 | `unimplemented_insn` | `udf #0` (NRO and ELF) |
+| 10 | `unimplemented_insn` | `udf #0` (NRO); `rmif x0, #0, #1`, a valid encoding not implemented yet (ELF) |
 | 11 | `memory_fault` | load from unmapped `0x10` (NRO and ELF) |
-| 12 | `cpu_error` | `brk #0` |
+| 12 | `cpu_error` | `brk #0`; `udf #0` in an ELF (the guest dies of SIGILL, process status 132) |
 | 13 | `svc_break` | `svc #0x26` |
 | 14 | `unhandled_svc` | `svc #0xff` (NRO); `badsyscall.elf` (Linux syscall 278) |
 | 15 | `cpu_halted` | **not reachable**: nothing in the tree constructs `StepResult::Halt`, so the code is dead today |

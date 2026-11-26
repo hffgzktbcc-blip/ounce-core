@@ -270,7 +270,9 @@ fn exec(engine: Engine, word: u32, init: &Init) -> (Exec, u64) {
                         exit = format!("svc {imm}");
                         break;
                     }
-                    Err(crate::cpu::CpuError::UnimplementedInstruction { .. }) if pc == WORD_PC => {
+                    Err(
+                        crate::cpu::CpuError::UnimplementedInstruction { .. } | crate::cpu::CpuError::Undefined { .. },
+                    ) if pc == WORD_PC => {
                         return (Exec::Unimplemented, 0);
                     }
                     Ok(other) if pc == WORD_PC => return (Exec::Other(format!("{other:?}")), 0),
