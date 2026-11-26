@@ -108,6 +108,41 @@ fn undecodable_instruction_is_diagnosed_by_word() {
 }
 
 #[test]
+fn el0_system_register_access_is_explicitly_diagnosed_on_every_tier() {
+    for (word, register, access) in [
+        (0xd538_0000, "S3_0_C0_C0_0", "MRS"), // MIDR_EL1; HWCAP_CPUID is not advertised.
+        (0xd518_1000, "S3_0_C1_C0_0", "MSR"), // SCTLR_EL1 is privileged.
+    ] {
+        let elf = tiny_elf(&[word]);
+        for tier in TIERS {
+            let (r, _) = go(&elf, &["sysreg"], tier);
+            let Stop::Failed { diagnosis, status } = r.stop else {
+                panic!("expected failure: {r:?}")
+            };
+            assert_eq!(status, 71);
+            assert!(diagnosis.contains(register), "{diagnosis}");
+            assert!(diagnosis.contains(access), "{diagnosis}");
+        }
+    }
+}
+
+#[test]
+fn linux_counter_is_deterministic_and_advances_on_every_tier() {
+    // MRS x2,CNTVCT_EL0; MRS x3,CNTVCT_EL0; SUB x0,x3,x2; exit(x0).
+    let elf = tiny_elf(&[0xd53b_e042, 0xd53b_e043, 0xcb02_0060, 0xd280_0ba8, 0xd400_0001]);
+    for tier in TIERS {
+        let mut cap = Capture::default();
+        let opts = Options {
+            tier,
+            deterministic: true,
+            ..Options::default()
+        };
+        let r = run(&elf, &["counter".into()], &opts, &mut cap, &mut |_| {});
+        assert_eq!(r.stop, Stop::Exited(1), "{tier:?}: {r:?}");
+    }
+}
+
+#[test]
 fn non_linux_svc_is_rejected() {
     // svc #0x7
     let elf = tiny_elf(&[0xD400_00E1]);
@@ -247,6 +282,15 @@ fn deterministic_clock_errors_do_not_consume_time_and_seconds_roll_over() {
         proc.dispatch(SYS_CLOCK_GETTIME, [1, 0, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(-EFAULT)
     );
+    proc.set_retired_instructions(1_234_567_890);
+    for clock in [2, 3] {
+        assert_eq!(
+            proc.dispatch(SYS_CLOCK_GETTIME, [clock, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
+            Outcome::Return(0)
+        );
+        assert_eq!(mem.read_u64(0x1000).unwrap(), 1);
+        assert_eq!(mem.read_u64(0x1008).unwrap(), 234_567_890);
+    }
     for i in 0..1002u64 {
         assert_eq!(
             proc.dispatch(SYS_CLOCK_GETTIME, [1, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),

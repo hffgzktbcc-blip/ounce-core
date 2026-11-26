@@ -20,7 +20,7 @@
   "expected": {
     "stop_kind": "clean_exit",
     "exit_code": 0,
-    "insns_executed": 60267,
+    "insns_executed": 52587,
     "frames_presented": 0,
     "framebuffer_hash": null,
     "audio_frames_mixed": 2640,
