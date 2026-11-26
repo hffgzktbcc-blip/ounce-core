@@ -833,6 +833,59 @@ fn version_banner_is_neutral_and_shows_features() {
     assert!(stdout.contains("native-jit"));
     assert!(stdout.contains("nce"));
     assert!(stdout.contains("host-io"));
+
+    let nro_heading = "NRO homebrew runtime (Horizon HLE, for unencrypted homebrew built from source)";
+    let cpu_pos = stdout
+        .find("CPU Subsystem: ARMv8.5-A AArch64 (PAC + BTI)")
+        .unwrap_or_else(|| panic!("missing CPU subsystem heading:\n{stdout}"));
+    let engines_pos = stdout
+        .find("Execution Engines")
+        .unwrap_or_else(|| panic!("missing Execution Engines row:\n{stdout}"));
+    let nro_pos = stdout
+        .find(nro_heading)
+        .unwrap_or_else(|| panic!("missing NRO homebrew runtime heading:\n{stdout}"));
+    assert!(
+        cpu_pos < nro_pos && engines_pos < nro_pos,
+        "NRO heading must follow ARM64 execution/engine lines:\n{stdout}"
+    );
+
+    let after_nro = &stdout[nro_pos..];
+    for expected in [
+        "39-bit & 48-bit Horizon Address Space",
+        "Bounded Maxwell/Ampere guest command emulation",
+        "Software paths, with optional host-GPU presentation",
+        "nvdrv GPU mappings",
+        "GPFIFO Channel Methods",
+        "Guest SASS -> IR -> CPU",
+        "Sparse guest pages allocated on demand",
+        "Horizon audren:u Audio Renderer",
+        "audout:u",
+        "Guest HID state from configured host input",
+        "Selected Horizon service ABI behaviours",
+        "Single host thread; guest scheduling is emulated",
+    ] {
+        assert!(
+            after_nro.contains(expected),
+            "missing '{expected}' under NRO homebrew runtime heading:\n{stdout}"
+        );
+    }
+
+    for forbidden in [
+        "[ Graphics Emulation ]",
+        "[ Guest Memory Model ]",
+        "[ Audio and Input Emulation ]",
+        "[ Homebrew Formats & Storage ]",
+        "[ Horizon OS 64-bit Microkernel & HLE Services ]",
+        "OunceCake",
+        "Joy-Con",
+        "Handheld",
+        "Docked",
+    ] {
+        assert!(
+            !stdout.contains(forbidden),
+            "unexpected '{forbidden}' in --version output:\n{stdout}"
+        );
+    }
 }
 
 #[test]
@@ -845,6 +898,8 @@ fn help_and_info_describe_the_actual_execution_model() {
     let help = String::from_utf8_lossy(&help.stdout);
     assert!(help.contains("tier3 (decoded block cache, default)"), "{help}");
     assert!(!help.contains("tier3 (reference interpreter"), "{help}");
+    assert!(!help.contains("Joy-Con"), "{help}");
+    assert!(help.contains("Interactive demo game with controller input"), "{help}");
 
     let info = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
         .arg("info")
@@ -852,11 +907,39 @@ fn help_and_info_describe_the_actual_execution_model() {
         .unwrap();
     assert!(info.status.success());
     let info = String::from_utf8_lossy(&info.stdout);
+    let arch_pos = info
+        .find("Single-threaded AArch64 execution for bounded program testing")
+        .unwrap_or_else(|| panic!("missing arch line:\n{info}"));
+    let engines_pos = info
+        .find("Execution Engines")
+        .unwrap_or_else(|| panic!("missing Execution Engines line:\n{info}"));
+    let nro_heading = "NRO homebrew runtime (Horizon HLE, for unencrypted homebrew built from source)";
+    let nro_pos = info
+        .find(nro_heading)
+        .unwrap_or_else(|| panic!("missing NRO homebrew runtime heading:\n{info}"));
     assert!(
-        info.contains("Single-threaded AArch64 execution for bounded program testing"),
-        "{info}"
+        arch_pos < nro_pos && engines_pos < nro_pos,
+        "NRO heading must follow ARM64 execution/engine lines:\n{info}"
     );
+    let after_nro = &info[nro_pos..];
+    for expected in [
+        "39-bit & 48-bit Horizon Address Space",
+        "nvdrv GPU mappings",
+        "Horizon audren:u Audio Renderer",
+    ] {
+        assert!(
+            after_nro.contains(expected),
+            "missing '{expected}' under NRO homebrew runtime heading:\n{info}"
+        );
+    }
     assert!(!info.contains("Octa-Core Preemptive Multi-Core Scheduler"), "{info}");
     assert!(!info.contains("Tegra T239 Custom"), "{info}");
     assert!(!info.contains("Preemptive Multi-Threaded Scheduler"), "{info}");
+    assert!(!info.contains("Joy-Con"), "{info}");
+    assert!(!info.contains("OunceCake"), "{info}");
+    assert!(!info.contains("[ Graphics Emulation ]"), "{info}");
+    assert!(
+        !info.contains("[ Horizon OS 64-bit Microkernel & HLE Services ]"),
+        "{info}"
+    );
 }

@@ -211,7 +211,7 @@ pub(crate) fn print_usage() {
         s.green, s.reset
     );
     println!(
-        "    {}info{}                    Show hardware architecture and engine status (also --version)",
+        "    {}info{}                    Show target architecture, engine status and NRO runtime (also --version)",
         s.green, s.reset
     );
     println!("    {}help{}                    Show this reference", s.green, s.reset);
@@ -226,7 +226,7 @@ pub(crate) fn print_usage() {
         s.green, s.reset
     );
     println!(
-        "    {}play{} [frames]           Interactive demo game with Joy-Con 2 controls",
+        "    {}play{} [frames]           Interactive demo game with controller input",
         s.green, s.reset
     );
     println!(
@@ -337,28 +337,75 @@ pub(crate) fn print_specs() {
         feat_state(cfg!(feature = "nce")),
     );
     print_row(&s, "Execution Engines   : ", &engines_info);
+    print_box_bottom(&s);
+    println!();
+
+    print_box_top(
+        &s,
+        "NRO homebrew runtime (Horizon HLE, for unencrypted homebrew built from source)",
+    );
+    print_row(&s, "Executables         : ", "Homebrew NRO0 and NSO0 modules");
+    print_row(
+        &s,
+        "Homebrew Loader     : ",
+        "Runs unencrypted homebrew NRO/NSO binaries",
+    );
+    print_row(&s, "Loose Folders       : ", "Unencrypted exefs/ + romfs/ directories");
+    print_row(
+        &s,
+        "RomFS Filesystem    : ",
+        "Level 3 Directory & File Hash Tables with Hierarchical Trees",
+    );
+    print_row(
+        &s,
+        "IPC Protocols       : ",
+        "Horizon Tipc (0x10/0x12) & CMIF (SFCI / SFCO)",
+    );
+    print_row(
+        &s,
+        "Active Services     : ",
+        "set:sys, am:appletOE, vi:m, hid, fsp-srv, ro:1, pl:u, time:u, nvdrv",
+    );
+    print_row(&s, "Firmware Target     : ", "Selected Horizon service ABI behaviours");
+    print_row(
+        &s,
+        "Process Model       : ",
+        "Single host thread; guest scheduling is emulated",
+    );
     print_row(
         &s,
         "Virtual MMU         : ",
         "Sparse 4KB Page Table (39-bit & 48-bit Horizon Address Space)",
     );
+    print_row(&s, "Address Space       : ", "Sparse guest pages allocated on demand");
     print_row(
         &s,
         "Memory Sub-Regions  : ",
         "Code, RoData, Heap, Stack (1MB), TLS, SharedMem, VRAM, RomFS",
     );
-    print_box_bottom(&s);
-    println!();
-
-    print_box_top(&s, "Graphics Emulation");
     print_row(
         &s,
-        "Architecture        : ",
+        "VRAM Framebuffer    : ",
+        "0x9000_0000 (1280x720 / 1920x1080 Linear RGBA)",
+    );
+    print_row(
+        &s,
+        "Pushbuffer Ring     : ",
+        "0x9400_0000 (Asynchronous GPFIFO Command Submission Ring)",
+    );
+    print_row(
+        &s,
+        "DMA Controller      : ",
+        "Zero-Copy Unified Virtual Memory & Audio DMA Circular Buffers",
+    );
+    print_row(
+        &s,
+        "Graphics Model      : ",
         "Bounded Maxwell/Ampere guest command emulation",
     );
     print_row(
         &s,
-        "Execution           : ",
+        "Graphics Execution  : ",
         "Software paths, with optional host-GPU presentation",
     );
     print_row(
@@ -386,30 +433,6 @@ pub(crate) fn print_specs() {
         "Host Execution      : ",
         "Experimental: gpu-present + OUNCE_GPU_BACKEND=host; see docs/guest-host-gpu.md",
     );
-    print_box_bottom(&s);
-    println!();
-
-    print_box_top(&s, "Guest Memory Model");
-    print_row(&s, "Address Space       : ", "Sparse guest pages allocated on demand");
-    print_row(
-        &s,
-        "VRAM Framebuffer    : ",
-        "0x9000_0000 (1280x720 Handheld / 1920x1080 Docked Linear RGBA)",
-    );
-    print_row(
-        &s,
-        "Pushbuffer Ring     : ",
-        "0x9400_0000 (Asynchronous GPFIFO Command Submission Ring)",
-    );
-    print_row(
-        &s,
-        "DMA Controller      : ",
-        "Zero-Copy Unified Virtual Memory & Audio DMA Circular Buffers",
-    );
-    print_box_bottom(&s);
-    println!();
-
-    print_box_top(&s, "Audio and Input Emulation");
     print_row(
         &s,
         "Audio DSP Mixer     : ",
@@ -433,51 +456,11 @@ pub(crate) fn print_specs() {
     print_box_bottom(&s);
     println!();
 
-    print_box_top(&s, "Homebrew Formats & Storage");
-    print_row(&s, "Executables        : ", "Homebrew NRO0 and NSO0 modules");
-    print_row(
-        &s,
-        "Loose Folders       : ",
-        "Unencrypted exefs/ + romfs/ directories (OunceCake format)",
-    );
-    print_row(
-        &s,
-        "RomFS Filesystem    : ",
-        "Level 3 Directory & File Hash Tables with Hierarchical Trees",
-    );
-    print_box_bottom(&s);
-    println!();
-
-    print_box_top(&s, "Horizon OS 64-bit Microkernel & HLE Services");
-    print_row(
-        &s,
-        "IPC Protocols       : ",
-        "Horizon Tipc (0x10/0x12) & CMIF (SFCI / SFCO)",
-    );
-    print_row(
-        &s,
-        "Active Services     : ",
-        "set:sys, am:appletOE, vi:m, hid, fsp-srv, ro:1, pl:u, time:u, nvdrv",
-    );
-    print_row(&s, "Firmware Target     : ", "Selected Horizon service ABI behaviours");
-    print_row(
-        &s,
-        "Process Model       : ",
-        "Single host thread; guest scheduling is emulated",
-    );
-    print_box_bottom(&s);
-    println!();
-
     print_box_top(&s, "Compliance & Security Verification");
     print_row(
         &s,
         "Distribution Status: ",
         "No keys, firmware, or retail content are distributed",
-    );
-    print_row(
-        &s,
-        "Homebrew Loader     : ",
-        "Runs unencrypted homebrew NRO/NSO binaries",
     );
     let val_validation = "Run cargo test --release and ounce-core test for current results";
     print_row(&s, "Validation Status   : ", val_validation);
