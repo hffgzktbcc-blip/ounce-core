@@ -88,18 +88,18 @@ impl Engine {
 fn parse_engines(list: &str) -> Result<Vec<Engine>, String> {
     let mut out = Vec::new();
     for name in list.split(',') {
-        let engine = match name.trim().to_ascii_lowercase().as_str() {
-            "interpreter" | "interp" | "tier1" => Engine::Interpreter,
-            "tier3" | "3" => Engine::Tier3,
-            "tier4" | "4" => Engine::Tier4,
-            "all" => {
-                out.extend([Engine::Interpreter, Engine::Tier3, Engine::Tier4]);
-                continue;
-            }
-            other => {
-                return Err(format!(
-                    "unknown engine '{other}' (expected interpreter, tier3, tier4 or all)"
-                ));
+        if name.trim().eq_ignore_ascii_case("all") {
+            out.extend([Engine::Interpreter, Engine::Tier3, Engine::Tier4]);
+            continue;
+        }
+        let engine = match crate::cpu::CpuTier::parse_arg(name).map_err(|e| format!("{e}, or all"))? {
+            crate::cpu::CpuTier::Interpreter => Engine::Interpreter,
+            crate::cpu::CpuTier::Tier3 => Engine::Tier3,
+            crate::cpu::CpuTier::Tier4 => Engine::Tier4,
+            crate::cpu::CpuTier::Native => {
+                return Err(
+                    "diverge compares block engines; native is not one (use interpreter, tier3, tier4 or all)".into(),
+                );
             }
         };
         out.push(engine);

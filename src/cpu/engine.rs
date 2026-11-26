@@ -1,5 +1,11 @@
-//! CPU tier selection: `--cpu=interpreter|tier3|tier4|native` or `OUNCE_CPU` (default `tier3`). Tier-4 needs the
-//! `native-jit` feature; without it, or on a host the recompiler does not support, Tier-3 runs.
+//! CPU tier selection: `--cpu=interpreter|tier3|tier4|native` or `OUNCE_CPU` (default `tier3`). Every command parses
+//! engine names with [`CpuTier::parse_arg`], so the accepted names and aliases are the same everywhere and an unknown
+//! name is a usage error (exit 2).
+//!
+//! Fallback policy (one for every command): an engine that is not built in or cannot run on this host never runs
+//! silently as another one. The run prints a one-line `[CPU]`/`[Tier-4]` warning on stderr, `ounce.run.v1` reports the
+//! engine that ran in `tier` and sets `silent_fallback` to true. Tier-4 needs the `native-jit` feature (and a host the
+//! recompiler supports); without it Tier-3 runs.
 //! `native` (native execution, `--features nce`, AArch64 hosts) runs whole homebrew programs on the
 //! host CPU (`run` and the corpus oracles); block-engine callers get Tier-3 for it.
 
@@ -22,13 +28,33 @@ pub enum CpuTier {
 static CLI_TIER: OnceLock<CpuTier> = OnceLock::new();
 
 impl CpuTier {
+    /// The engine names every command accepts (case-insensitive), with their aliases. This is the single list the
+    /// usage errors print.
+    pub const VALID_NAMES: &'static str =
+        "interpreter (alias interp, tier1), tier3 (alias 3), tier4 (alias 4), native (alias nce)";
+
+    /// The one engine-name parser: `--cpu=`, `OUNCE_CPU`, `fuzz-replay --engine`, `diverge --engine` and the lab all
+    /// use it.
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "interpreter" => Some(Self::Interpreter),
+            "interpreter" | "interp" | "tier1" => Some(Self::Interpreter),
             "tier3" | "3" => Some(Self::Tier3),
             "tier4" | "4" => Some(Self::Tier4),
             "native" | "nce" => Some(Self::Native),
             _ => None,
+        }
+    }
+
+    /// [`CpuTier::parse`] with the usage-error text for an unknown name.
+    pub fn parse_arg(value: &str) -> Result<Self, String> {
+        Self::parse(value).ok_or_else(|| format!("unknown engine '{value}'; valid engines: {}", Self::VALID_NAMES))
+    }
+
+    /// Validates `OUNCE_CPU` if it is set and non-empty.
+    pub fn check_env() -> Result<(), String> {
+        match std::env::var("OUNCE_CPU") {
+            Ok(v) if !v.trim().is_empty() => Self::parse_arg(&v).map(|_| ()).map_err(|e| format!("OUNCE_CPU: {e}")),
+            _ => Ok(()),
         }
     }
 
@@ -101,6 +127,16 @@ impl CpuEngine {
                 eprintln!("[Tier-4] Not available: rebuild with `--features native-jit`; running Tier-3.");
                 CpuEngine::Tier3(Tier3JitEngine::new())
             }
+        }
+    }
+
+    /// The `ounce.run.v1` `tier` value of the engine that actually runs.
+    pub fn report_label(&self) -> &'static str {
+        match self {
+            CpuEngine::Interpreter => CpuTier::Interpreter.report_label(),
+            CpuEngine::Tier3(_) => CpuTier::Tier3.report_label(),
+            #[cfg(feature = "native-jit")]
+            CpuEngine::Tier4(_) => CpuTier::Tier4.report_label(),
         }
     }
 

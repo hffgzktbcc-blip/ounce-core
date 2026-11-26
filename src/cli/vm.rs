@@ -226,9 +226,23 @@ pub(crate) fn run_vm_internal(
     let mut stop_message: Option<String> = None;
     let mut last_input_poll = Instant::now();
     let mut last_queued_frame = 0;
-    let mut engine = cpu::CpuTier::explicit()
-        .filter(|tier| *tier != cpu::CpuTier::Native)
-        .map(cpu::CpuEngine::new);
+    let requested_tier = cpu::CpuTier::explicit();
+    if requested_tier == Some(cpu::CpuTier::Native) {
+        // Native execution handled this run before the VM when it could (an NRO on an `nce` build); reaching here
+        // means it did not, so the interpreter runs. Say so on stderr; the report carries `silent_fallback`.
+        let why = if cfg!(feature = "nce") {
+            "native execution only runs NRO files on AArch64 hosts"
+        } else {
+            "this build has no native execution (rebuild with `--features nce` on an AArch64 host)"
+        };
+        eprintln!("[CPU] --cpu=native did not run natively: {why}; ran the interpreter instead.");
+    }
+    // With no `--cpu`/`OUNCE_CPU` the documented default, Tier-3, runs (not the single-step interpreter).
+    let mut engine = match requested_tier {
+        Some(cpu::CpuTier::Native) => None,
+        Some(tier) => Some(cpu::CpuEngine::new(tier)),
+        None => Some(cpu::CpuEngine::new(cpu::CpuTier::Tier3)),
+    };
     if let Some(e) = &engine {
         println!("[CPU] Block engine: {}", e.name());
     }
@@ -301,6 +315,14 @@ pub(crate) fn run_vm_internal(
                             cpu.step(&mut mmu).err().map(|err| err.to_string())
                         });
                         let msg = match detail {
+                            // The interpreter's own diagnosis, unwrapped, so an unimplemented instruction or a bad
+                            // memory access is reported (stop kind, opcode, fault address) like a single-step stop.
+                            Some(reason)
+                                if reason.starts_with("Unimplemented instruction 0x")
+                                    || reason.contains("Memory access violation:") =>
+                            {
+                                reason
+                            }
                             Some(reason) => {
                                 format!("{} fault at {fault_pc:#x} (slice began at {pc:#x}): {reason}", e.name())
                             }
@@ -670,9 +692,16 @@ pub(crate) fn run_vm_internal(
         VmStop::Fault => "cpu_error",
     };
     let audio = audio::combined_summary(&kernel.audren.tap, &kernel.audio.tap);
+    // `tier` names the engine that ran. A requested engine that could not run is a fallback: `silent_fallback` is true.
+    let (ran_label, silent_fallback) = match (engine.as_ref(), requested_tier) {
+        (Some(e), Some(req)) => (e.report_label(), e.report_label() != req.report_label()),
+        (None, Some(cpu::CpuTier::Native)) => (cpu::CpuTier::Interpreter.report_label(), true),
+        (Some(e), None) => (e.report_label(), false),
+        _ => (cpu::CpuTier::from_env().report_label(), false),
+    };
     let report = run_report::RunReport {
-        tier: cpu::CpuTier::from_env().report_label(),
-        silent_fallback: false,
+        tier: ran_label,
+        silent_fallback,
         stop_kind,
         exit_code: run_report::exit_code_for(stop_kind),
         pc: stop_pc,
