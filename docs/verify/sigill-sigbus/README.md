@@ -31,3 +31,9 @@ is not evidence for those two values. What it does show:
 No CI job runs the committed `tests/linux-elf` fixtures on the `ubuntu-24.04-arm` runner (it runs `cargo test`, whose
 Linux fixtures execute on the emulator), so `fault_signals` has not been run on Linux AArch64 hardware. Build it with
 `tests/linux-elf/src/build.sh`; run it on hardware to compare.
+
+**Hardware validity of `fault_signals`.** It uses `MRS SCTLR_EL1` for the unexposed-register case because real Linux
+(4.11 and later) sets `HWCAP_CPUID` and emulates EL0 reads of `MIDR_EL1`, `MPIDR_EL1`, `REVIDR_EL1` and the ID
+registers (`cpufeature.c`, `do_emulate_mrs`), so an ID-register read would not fault there. ounce-core still faults
+those reads; a follow-up will emulate them. The `SIGBUS` frame carries `esr_context` (`signal.c`, `setup_sigframe`),
+checked for load (`0x92000021`) and store-exclusive (`0x92000061`) faults.

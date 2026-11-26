@@ -1,7 +1,7 @@
 //! Synchronous Linux AArch64 SIGSEGV, SIGBUS and SIGILL delivery. Frames follow the Linux UAPI
 //! rt_sigframe/ucontext layout; guest handlers may return or siglongjmp away.
 use super::syscalls::{EFAULT, EINVAL, ESRCH, Outcome, PID, Process};
-use crate::cpu::{Cpu, CpuError};
+use crate::cpu::{Cpu, CpuError, Instruction};
 use crate::mmu::{Memory, MemoryError, Permission};
 
 /// What became of a fault the engine reported.
@@ -161,7 +161,11 @@ impl Process {
         } else {
             cpu.regs.sp
         };
-        let Some(frame) = top.checked_sub(FRAME_SIZE).map(|v| v & !15) else {
+        // As `get_sigframe`: a 16-byte frame record {fp, lr} sits at the top and the rt_sigframe below it.
+        let Some(record) = top.checked_sub(16).map(|v| v & !15) else {
+            return SyncFault::NotDelivered;
+        };
+        let Some(frame) = record.checked_sub(FRAME_SIZE) else {
             return SyncFault::NotDelivered;
         };
         let mut data = vec![0u8; FRAME_SIZE as usize];
@@ -188,7 +192,25 @@ impl Process {
             data[(FP + 16) as usize + i * 16..(FP + 16) as usize + (i + 1) * 16]
                 .copy_from_slice(&cpu.regs.v[i].to_le_bytes());
         }
-        if mmu.write_bytes(frame, &data).is_err() {
+        if sig == 7 {
+            // esr_context after fpsimd_context (`setup_sigframe`: present whenever `fault_code` is set; SIGILL
+            // from `arm64_notify_die` has none). The alignment-fault ESR: EC 0x24 (data abort from a lower EL),
+            // IL, DFSC 0x21, plus WnR (bit 6) when the instruction is a store-exclusive.
+            let is_store = mmu.read_u32(pc).is_ok_and(|w| {
+                matches!(
+                    crate::cpu::decoder::decode(w),
+                    Instruction::LoadStoreExclusive { is_load: false, .. }
+                        | Instruction::LoadStoreExclusivePair { is_load: false, .. }
+                )
+            });
+            let esr = 0x24u64 << 26 | 1 << 25 | (is_store as u64) << 6 | 0x21;
+            put(&mut data, FP + 528, 0x4553_5201 | 16 << 32); // ESR_MAGIC, size 16
+            put(&mut data, FP + 536, esr);
+        }
+        if mmu.write_bytes(frame, &data).is_err()
+            || mmu.write_u64(record, cpu.regs.x[29]).is_err()
+            || mmu.write_u64(record + 8, cpu.regs.x[30]).is_err()
+        {
             return SyncFault::NotDelivered;
         }
         if !mmu.is_mapped(TRAMPOLINE) {
@@ -207,8 +229,12 @@ impl Process {
         cpu.regs.sp = frame;
         cpu.regs.pc = handler;
         cpu.regs.x[0] = sig;
-        cpu.regs.x[1] = frame;
-        cpu.regs.x[2] = frame + 128;
+        cpu.regs.x[29] = record;
+        if flags & 4 != 0 {
+            // SA_SIGINFO: only then do x1 and x2 point at siginfo and ucontext (`setup_rt_frame`).
+            cpu.regs.x[1] = frame;
+            cpu.regs.x[2] = frame + 128;
+        }
         cpu.regs.x[30] = if flags & 0x04000000 != 0 {
             u64::from_le_bytes(action[16..24].try_into().unwrap())
         } else {
