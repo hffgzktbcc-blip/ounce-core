@@ -86,7 +86,7 @@ that CPU produced identical output.
 **After the FPSR exception flags (local qemu-user, same corpus, same trace sha256 `ceab2b2c…`, this branch, 389,556
 cases):** interpreter, Tier-3 and Tier-4 each show 0 value mismatches and 0 flag mismatches over all nine FPCR values
 (294,156 executed cases per engine, 95,400 unsupported); the gate passes. The reference is qemu, not silicon: hardware
-agreement on the flags is what the `fp-edge` CI job on `ubuntu-24.04-arm` and `macos-latest` decides.
+agreement on the flags was decided by the `fp-edge` CI job on `ubuntu-24.04-arm` and `macos-latest` until `#548` (23 Nov 2026) removed that workflow; today nothing in CI checks it, so run `run.sh` on ARM64 hardware yourself.
 The one place the first local run disagreed with qemu was half-precision `FMAX/FMIN/FMAXNM/FMINNM` with
 FPCR.FZ16 and a denormal input (1,024 cases, interpreter raised IDC, qemu does not); the interpreter now raises nothing
 for half-precision flushes, which matches qemu and which the hardware run below did not contradict.

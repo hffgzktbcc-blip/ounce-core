@@ -37,7 +37,7 @@ That run (above) used round-to-nearest-even only and compared results, not flags
 
 `tools/testfloat/gen_trace.py` now also emits the exception flags, all four FPCR rounding modes, invalid operations
 on non-NaN inputs (positive default NaN), FCVT, SCVTF/UCVTF, FCVT*S/U (saturating, NaN gives 0), FRINT*, FCMP and
-FCMPE (NaNs included). The `testfloat` job in `.github/workflows/fp-edge.yml` builds SoftFloat/TestFloat at pinned
+FCMPE (NaNs included). The `testfloat` job in the former `.github/workflows/fp-edge.yml` (removed in `#548`, 23 Nov 2026) built SoftFloat/TestFloat at pinned
 commits and replays that through the interpreter and Tier-3. **Result (CI run 43180713127, commit 5ba3cd9, 2026-11-12, `--count 3000`):** 430,640 cases emitted (10,360 NaN-input cases
 skipped), 20 instruction classes; the interpreter and Tier-3 each match all 430,640 on result, NZCV and QC with 0
 mismatches and 0 FPSR flag mismatches. The local sandbox still cannot run TestFloat, so this is CI-only.
