@@ -38,6 +38,10 @@ pub fn decode(raw: u32) -> Instruction {
     if let Some(inst) = decode_pauth(raw) {
         return inst;
     }
+    // CLREX #imm4 clears the local exclusive monitor, so it is not a barrier no-op.
+    if (raw & 0xFFFF_F0FF) == 0xD503_305F {
+        return Instruction::Clrex;
+    }
     if (raw & 0xFFFF_F01F) == 0xD503_201F || (raw & 0xFFFF_F000) == 0xD503_3000 || (raw & 0xFFF0_0000) == 0xD500_0000 {
         return Instruction::Nop;
     }

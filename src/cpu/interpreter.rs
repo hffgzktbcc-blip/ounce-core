@@ -36,6 +36,12 @@ pub enum CpuError {
         pc: u64,
     },
 
+    /// An architecturally UNDEFINED encoding (`UDF` and the rest of the reserved class). On Linux this is
+    /// `SIGILL` with `ILL_ILLOPC`; it is a guest fault, unlike [`CpuError::UnimplementedInstruction`], which
+    /// is a valid encoding ounce-core does not implement yet.
+    #[error("Undefined instruction 0x{raw:08X} at PC: 0x{pc:016X}")]
+    Undefined { raw: u32, pc: u64 },
+
     #[error("BRK #{imm:#x} breakpoint hit at PC: 0x{pc:016X}")]
     Breakpoint { imm: u16, pc: u64 },
 
@@ -62,10 +68,12 @@ pub enum StepResult {
 pub struct Cpu {
     pub regs: CpuRegisters,
     pub jit: JitBlockCache,
-    /// Exclusive monitor: the address the last load-exclusive tagged. A store-exclusive succeeds only
-    /// while it is still set for that address; switching threads clears it, so an interrupted
-    /// LDXR/STXR sequence retries as on hardware.
-    pub exclusive: Option<u64>,
+    /// Local exclusive monitor: the address and access size in bytes that the last load-exclusive tagged.
+    /// A store-exclusive succeeds only while it is still set for the same address *and* size. `CLREX`, any
+    /// store-exclusive (success or failure) and switching threads clear it, so an interrupted LDXR/STXR
+    /// sequence retries as on hardware. Ordinary stores do not clear it: whether they do is IMPLEMENTATION
+    /// DEFINED, and not clearing never turns a correct retry loop into a livelock (see docs/LIMITS.md).
+    pub exclusive: Option<(u64, u8)>,
     /// Pointer authentication keys and EL0 controls (shared by the process's threads).
     pub pauth: PointerAuth,
     /// `CNTPCT_EL0`: the kernel moves it up to the system tick at every SVC, and each read advances it by
@@ -2057,14 +2065,26 @@ impl Cpu {
                 is_exclusive,
             } => {
                 let addr = self.regs.read_x_or_sp(rn);
-                if !is_load && is_exclusive && self.exclusive.take() != Some(addr) {
-                    // The monitor was lost (another thread ran since the load-exclusive): fail, no store.
+                // Load/store-exclusive and load-acquire/store-release must be aligned to their size, or the
+                // hardware takes an alignment fault (Linux: SIGBUS, BUS_ADRALN). The check comes first, so a
+                // misaligned STXR faults whatever the monitor holds.
+                if addr & (size_bytes as u64 - 1) != 0 {
+                    return Err(MemoryError::Misaligned {
+                        addr,
+                        size: size_bytes as usize,
+                    }
+                    .into());
+                }
+                let key = Some((addr, size_bytes));
+                if !is_load && is_exclusive && self.exclusive.take() != key {
+                    // The monitor was lost (CLREX, another thread ran, or it tags another address or size):
+                    // fail, no store.
                     self.regs.write_w(rs, 1);
                     self.regs.advance_pc();
                     return Ok(StepResult::Continue);
                 }
                 if is_load && is_exclusive {
-                    self.exclusive = Some(addr);
+                    self.exclusive = key;
                 }
                 if is_load {
                     let val = match size_bytes {
@@ -2120,10 +2140,10 @@ impl Cpu {
                     } else {
                         (mmu.read_u32(addr)? as u64, mmu.read_u32(addr.wrapping_add(4))? as u64)
                     };
-                    self.exclusive = Some(addr);
+                    self.exclusive = Some((addr, (elem * 2) as u8));
                     self.regs.write_x(rt, lo);
                     self.regs.write_x(rt2, hi);
-                } else if self.exclusive.take() != Some(addr) {
+                } else if self.exclusive.take() != Some((addr, (elem * 2) as u8)) {
                     self.regs.write_w(rs, 1);
                 } else {
                     let (lo, hi) = (self.regs.read_x(rt), self.regs.read_x(rt2));
@@ -3328,6 +3348,19 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Clrex => {
+                self.exclusive = None;
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            // Top-level decode "Reserved" (bit 31 = 0, bits 28:25 = 0000: UDF and its unallocated
+            // neighbours) is permanently UNDEFINED, so Linux raises SIGILL. Every other word the decoder
+            // does not know is a valid encoding ounce-core has not implemented. Only Linux guests get the
+            // signal; a Horizon guest keeps the unimplemented-instruction stop.
+            Instruction::Unimplemented { raw } if self.linux_user && raw & 0x9E00_0000 == 0 => {
+                Err(CpuError::Undefined { raw, pc })
+            }
             Instruction::Unimplemented { raw } => Err(CpuError::UnimplementedInstruction { raw, pc }),
         }
     }

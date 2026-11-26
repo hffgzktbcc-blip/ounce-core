@@ -1,6 +1,7 @@
 //! Run loop: ELF load, engine selection, SVC dispatch and failure diagnosis.
 
 use super::elf::{self, ElfError};
+use super::signals::SyncFault;
 use super::syscalls::{Outcome, Output, Process};
 use crate::cpu::tier2_jit::BlockExit;
 use crate::cpu::{Cpu, CpuEngine, CpuError, CpuTier, StepResult};
@@ -353,10 +354,28 @@ pub fn run_with_stdin(
                 }
             }
             BlockExit::Fault { pc } => {
-                if proc.deliver_segv(&mut cpu, &mut mmu, pc) {
+                let delivery = proc.deliver_fault(&mut cpu, &mut mmu, pc);
+                if matches!(delivery, SyncFault::Delivered) {
                     continue;
                 }
                 let (diagnosis, detail) = diagnose_fault(&mut cpu, &mut mmu, pc, &image.symbols);
+                if let SyncFault::Fatal(sig) = delivery {
+                    // Default action of a forced SIGILL/SIGBUS: the process dies of the signal, which a shell
+                    // reports as 128 + signal. The diagnosis still names the instruction or register.
+                    let name = if sig == 4 {
+                        "SIGILL (illegal instruction)"
+                    } else {
+                        "SIGBUS (bus error)"
+                    };
+                    return fail(
+                        format!("guest terminated by {name}: {diagnosis}"),
+                        128 + sig,
+                        detail,
+                        engine_name,
+                        insns,
+                        syscalls,
+                    );
+                }
                 return fail(diagnosis, EXIT_FAULT, detail, engine_name, insns, syscalls);
             }
             _ => {}
@@ -390,6 +409,7 @@ fn diagnose_fault(cpu: &mut Cpu, mmu: &mut Memory, pc: u64, symbols: &elf::Symbo
                     detail.fault_addr = Some(m.addr());
                 }
                 CpuError::Breakpoint { .. }
+                | CpuError::Undefined { .. }
                 | CpuError::Halted(_)
                 | CpuError::BranchTarget { .. }
                 | CpuError::IllegalSystemRegister { .. } => {}

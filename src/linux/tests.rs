@@ -95,16 +95,141 @@ fn unknown_syscall_is_diagnosed_by_number() {
     }
 }
 
+/// `RMIF x0, #0, #1` (FEAT_FlagM) is a valid encoding that executes on the Apple M3 but that ounce-core does not
+/// decode yet: an emulator gap, so it keeps stopping with the unimplemented-instruction diagnosis (not SIGILL).
+const RMIF: u32 = 0xBA00_0401;
+
 #[test]
-fn undecodable_instruction_is_diagnosed_by_word() {
-    // Hand-built ELF whose entry is the permanently-undefined word 0x00000000 (UDF #0).
-    let elf = tiny_elf(&[0x0000_0000]);
-    let (r, _) = go(&elf, &["udf"], CpuTier::Tier3);
-    let Stop::Failed { diagnosis, status } = r.stop else {
-        panic!("expected failure: {r:?}")
+fn unimplemented_instruction_is_diagnosed_by_word() {
+    let elf = tiny_elf(&[RMIF]);
+    for tier in TIERS {
+        let (r, _) = go(&elf, &["rmif"], tier);
+        let Stop::Failed { diagnosis, status } = r.stop else {
+            panic!("expected failure: {r:?}")
+        };
+        assert_eq!(status, 71, "{tier:?}");
+        assert!(diagnosis.contains("instruction word 0xba000401"), "{diagnosis}");
+        assert!(diagnosis.contains("Unimplemented instruction"), "{diagnosis}");
+    }
+}
+
+/// With no handler, UDF and the rest of the reserved class kill the guest with SIGILL (status 128 + 4), as on
+/// Linux, and the diagnosis still names the word.
+#[test]
+fn undefined_encodings_without_a_handler_end_in_sigill_on_every_tier() {
+    for word in [0x0000_0000u32, 0x0000_ffff, 0x0001_0000, 0x01ff_ffff] {
+        let elf = tiny_elf(&[word]);
+        for tier in TIERS {
+            let (r, _) = go(&elf, &["udf"], tier);
+            let Stop::Failed { diagnosis, status } = r.stop else {
+                panic!("expected failure: {r:?}")
+            };
+            assert_eq!(status, 132, "{word:#x} on {tier:?}");
+            assert!(diagnosis.contains("SIGILL"), "{diagnosis}");
+            assert!(
+                diagnosis.contains(&format!("instruction word {word:#010x}")),
+                "{diagnosis}"
+            );
+        }
+    }
+}
+
+/// Ignoring SIGILL does not help a forced signal: the kernel resets the action to default and kills the process.
+#[test]
+fn ignored_sigill_is_still_fatal() {
+    let elf = tiny_elf(&[
+        0xd280_0029,
+        0xa9be_7fe9,
+        0xa901_7fff,
+        0xd280_0080,
+        0x9100_03e1,
+        0xd280_0002,
+        0xd280_0103,
+        0xd280_10c8,
+        0xd400_0001, // rt_sigaction(SIGILL, {SIG_IGN}, NULL, 8)
+        0x0000_0000, // udf #0
+    ]);
+    for tier in TIERS {
+        let (r, _) = go(&elf, &["ign"], tier);
+        assert!(matches!(r.stop, Stop::Failed { status: 132, .. }), "{tier:?}: {r:?}");
+    }
+}
+
+/// `fault_signals.c`: a guest handler receives SIGILL (UDF, reserved word, EL1 MSR, unexposed MRS) with
+/// `ILL_ILLOPC` and `si_addr` = pc, and SIGBUS (misaligned LDXR/LDAXR/LDXRH/STXR/LDXP/LDAXP/STXP) with `BUS_ADRALN`
+/// and `si_addr` = the address; the handler skips the instruction and the guest continues. CLREX clears the monitor.
+#[test]
+fn guest_handlers_receive_sigill_and_sigbus_on_every_tier() {
+    let elf = include_bytes!("../../tests/linux-elf/bin/fault_signals.elf");
+    for tier in TIERS {
+        let (r, out) = go(elf, &["fault_signals"], tier);
+        assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
+        assert_eq!(out, "SIGILL and SIGBUS delivery, siginfo and CLREX: ok\n", "{tier:?}");
+    }
+}
+
+/// With no handler, a misaligned exclusive ends in SIGBUS (status 128 + 7). ounce-core does not advertise
+/// `HWCAP_USCAT` (FEAT_LSE2), so it applies the pre-LSE2 rule: any access not aligned to its size faults, not only
+/// one that crosses a 16-byte boundary (the Apple M3 and other LSE2 cores only fault on the crossing; see
+/// docs/verify/sigill-sigbus/).
+#[test]
+fn misaligned_exclusives_without_a_handler_end_in_sigbus_on_every_tier() {
+    let sp_plus = |n: u32| 0x9100_03E0 | (n << 10); // add x0, sp, #n
+    for (name, code) in [
+        ("ldxr x +1", vec![sp_plus(1), 0xc85f_7c01]),
+        ("ldxr w +2", vec![sp_plus(2), 0x885f_7c01]),
+        ("ldxrh +1", vec![sp_plus(1), 0x485f_7c01]),
+        ("stxr x +4", vec![sp_plus(4), 0xc802_7c01]),
+        ("ldxp x +8", vec![sp_plus(8), 0xc87f_0801]),
+        ("ldaxp w +4", vec![sp_plus(4), 0x887f_8801]),
+        ("stlxp w +4", vec![sp_plus(4), 0x8823_8801]),
+    ] {
+        for tier in TIERS {
+            let (r, _) = go(&tiny_elf(&code), &["bus"], tier);
+            let Stop::Failed { diagnosis, status } = &r.stop else {
+                panic!("{name} on {tier:?}: {r:?}")
+            };
+            assert_eq!(*status, 135, "{name} on {tier:?}: {diagnosis}");
+            assert!(diagnosis.contains("SIGBUS"), "{diagnosis}");
+        }
+    }
+}
+
+/// The local monitor tracks address and size. A store-exclusive of another size or to another address fails
+/// (architecturally CONSTRAINED UNPREDICTABLE; the Apple M3 lets both succeed). An ordinary store in between
+/// does not clear it (IMPLEMENTATION DEFINED; the M3 clears it for the same 16-byte granule): documented in LIMITS.md.
+#[test]
+fn exclusive_monitor_tracks_address_and_size_on_every_tier() {
+    let exit_w2 = [0xaa02_03e0u32, 0xd280_0bc8, 0xd400_0001]; // mov x0, x2; mov x8, #94; svc #0
+    let with = |body: &[u32]| {
+        let mut code = vec![0xd100_83ff, 0x9100_03e0, 0x9100_23e4]; // sub sp, sp, #32; mov x0, sp; add x4, sp, #8
+        code.extend_from_slice(body);
+        code.extend_from_slice(&exit_w2);
+        tiny_elf(&code)
     };
-    assert_eq!(status, 71);
-    assert!(diagnosis.contains("instruction word 0x00000000"), "{diagnosis}");
+    for (name, body, status) in [
+        ("ldxr x; stxr x", vec![0xc85f_7c01, 0xc802_7c01], 0),
+        ("ldxr w; stxr x (size differs)", vec![0x885f_7c01, 0xc802_7c03], 1),
+        ("ldxr x; stxr w (size differs)", vec![0xc85f_7c01, 0x8802_7c03], 1),
+        (
+            "ldxr [sp]; stxr [sp+8] (address differs)",
+            vec![0xc85f_7c01, 0xc802_7c83],
+            1,
+        ),
+        ("ldxr; clrex; stxr", vec![0xc85f_7c01, 0xd503_3f5f, 0xc802_7c01], 1),
+        ("stxr alone", vec![0xc802_7c01], 1),
+        ("ldxr; stxr; stxr", vec![0xc85f_7c01, 0xc802_7c01, 0xc802_7c01], 1),
+        (
+            "ldxr; str same address; stxr",
+            vec![0xc85f_7c01, 0xf900_0001, 0xc802_7c01],
+            0,
+        ),
+    ] {
+        for tier in TIERS {
+            let (r, _) = go(&with(&body), &["monitor"], tier);
+            assert_eq!(r.stop, Stop::Exited(status), "{name} on {tier:?}: {r:?}");
+        }
+    }
 }
 
 #[test]
@@ -119,7 +244,7 @@ fn el0_system_register_access_is_explicitly_diagnosed_on_every_tier() {
             let Stop::Failed { diagnosis, status } = r.stop else {
                 panic!("expected failure: {r:?}")
             };
-            assert_eq!(status, 71);
+            assert_eq!(status, 132, "no handler: SIGILL");
             assert!(diagnosis.contains(register), "{diagnosis}");
             assert!(diagnosis.contains(access), "{diagnosis}");
         }
@@ -622,12 +747,12 @@ fn non_linux_svc_reports_its_immediate_as_svc_id() {
 }
 
 #[test]
-fn undefined_instruction_reports_its_opcode() {
-    let r = go_t3(&tiny_elf(&[0x0000_0000])); // UDF #0
+fn unimplemented_instruction_reports_its_opcode() {
+    let r = go_t3(&tiny_elf(&[RMIF]));
     let report = r.to_run_report(CpuTier::Tier3);
     assert_eq!(
         (report.stop_kind, report.exit_code, report.opcode),
-        ("unimplemented_insn", 10, Some(0))
+        ("unimplemented_insn", 10, Some(RMIF))
     );
     assert_eq!(report.pc, Some(r.detail.regs.unwrap().pc));
 }
