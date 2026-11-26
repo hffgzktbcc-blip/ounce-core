@@ -56,6 +56,12 @@ every host. On `run` and `run-nro`, supported 3D frames use the software
 rasterizer in deterministic mode so they can be hashed. Outside that mode, a
 `gpu-present` window may not produce a `framebuffer_hash`.
 
+For `run-elf`, the deterministic realtime epoch is `1700000000.000000000`; the first
+monotonic reading is `0.001000000`. The Linux virtual counter runs at 1 GHz and derives
+from retired instructions in deterministic mode. Process and thread CPU-time clocks use
+the same deterministic instruction-time model. See [the exact clock and system-register
+contract](LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026).
+
 Field list, stop kinds, and the limits of this report:
 [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md).
 
@@ -112,7 +118,8 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 This shows that small test binaries run; it does not show that every crate's tests do. Tests
-that spawn threads or need other unsupported instructions or system
+that spawn threads get a thread-creation error inside the guest (`WouldBlock`, os error 11), after a
+one-time ounce-core note on stderr; tests that need other unsupported instructions or system
 calls stop with a diagnosis ([limits](LIMITS.md)).
 
 ## Where the other tools live

@@ -19,13 +19,14 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
 - ELF64 little-endian AArch64 `ET_EXEC`; `PT_LOAD` mapping; stack with argc, argv, empty envp, auxv
   (PHDR, PHENT, PHNUM, PAGESZ, ENTRY, UID/GID, HWCAP, CLKTCK, SECURE, RANDOM, PLATFORM, EXECFN).
   `AT_HWCAP` advertises the features listed in [LIMITS.md](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026), known-answer tested on the interpreter, Tier-3 and Tier-4.
-- Syscalls (via `SVC #0`, number in x8): `write`, `writev` (fd 1 and 2 only), `exit`, `exit_group`,
+- Syscalls (via `SVC #0`, number in x8): `write` (fd 1, fd 2 and files opened on the scratch file system), `writev` (fd 1 and 2 only), `exit`, `exit_group`,
   `brk`, `mmap` (anonymous only, including sparse reservations and `MAP_FIXED`), `mprotect`, `munmap`, `mremap` (anonymous mappings; shrink in place, grow only with `MREMAP_MAYMOVE`), `ioctl` (returns
   ENOTTY), `set_tid_address`, `rt_sigaction`/`rt_sigprocmask`, `sigaltstack`, `rt_sigreturn`, `getpid`/`gettid`,
   `getrlimit`/`prlimit64` (read-only stack limit), `ppoll`, `getrandom` (fixed deterministic stream),
   `read`/`readv`/`pread64`/`pwrite64`/`lseek`/`fstat`/`newfstatat` (also `AT_EMPTY_PATH`)/`unlinkat`/`ftruncate`/`fcntl`,
   `clock_gettime` (realtime, monotonic), `uname`, `openat` on a bounded in-memory scratch file system (`/tmp`, `/var/tmp`, `/dev/null`, `/proc/self/auxv`; other paths ENOENT), `readlinkat` (always ENOENT),
-  `sched_getaffinity` (one CPU: an 8-byte mask with CPU 0 set).
+  `sched_getaffinity` (one CPU: an 8-byte mask with CPU 0 set), `sched_setaffinity` and `getcpu` (the same single CPU),
+  `clone`/`clone3` with thread flags (refused with `ENOSYS` and a one-time note on stderr; there are no guest threads).
 - Test programs: `tests/linux-elf/src/*.c`, built by `tests/linux-elf/src/build.sh` (clang plus LLD,
   or rustup's `rust-lld`) into `tests/linux-elf/bin/` (each ELF is about 1-2 KB). Tests run each
   program on `tier3` and `tier4` (Tier-4 falls back to Tier-3 without `--features native-jit`).

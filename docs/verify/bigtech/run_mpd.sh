@@ -1,0 +1,11 @@
+#!/bin/bash
+# Set BT (work dir holding the upstream checkouts; copy this directory to $BT/h) and ZIG (Zig 0.17.1 binary).
+BT=${BT:-/tmp/bigtech-verify}; ZIG=${ZIG:-/tmp/zig/zig}
+M=$BT/mpdecimal-4.0.0
+cd $BT/h
+SRC=$(ls $M/libmpdec/*.c | grep -v bench)
+D=(-DCONFIG_64 -DANSI -DHAVE_UINT128_T -DHAVE_CONFIG_H -I$M -I$M/libmpdec -I$M/tests -DMPD_PREC_STATIC=0 -std=gnu99 -w)
+clang -O2 "${D[@]}" $SRC $M/tests/runtest.c $M/tests/test.c -lm -o mpd_native 2>&1 | grep -E "error" | head
+"$ZIG" cc -target aarch64-linux-musl -static -no-pie -O2 "${D[@]}" $SRC $M/tests/runtest.c $M/tests/test.c -lm -o mpd_O2 2>&1 | grep error | head
+"$ZIG" cc -target aarch64-linux-musl -static -no-pie -O3 -mcpu=apple_m1 "${D[@]}" $SRC $M/tests/runtest.c $M/tests/test.c -lm -o mpd_O3 2>&1 | grep error | head
+ls -la mpd_*

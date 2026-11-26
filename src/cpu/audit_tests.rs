@@ -123,6 +123,28 @@ fn cmp_sp_immediate_uses_sp_when_setting_flags() {
 }
 
 #[test]
+fn ctr_el0_reports_64_byte_cache_lines() {
+    // Linux permits CTR_EL0 at EL0 independently of HWCAP_CPUID. DminLine and IminLine are both
+    // 4, meaning 4-byte words * 2^4 = 64 bytes; CWG and ERG are also 4.
+    check(0xd53b_0020, |_| {}, |c| assert_eq!(c.regs.read_x(0), 0x8444_c004));
+}
+
+#[test]
+fn linux_generic_timer_has_a_consistent_one_ghz_frequency() {
+    let mut memory = Memory::new();
+    memory.map_range(CODE, 4096, Permission::READ_WRITE_EXECUTE);
+    memory.write_u32(CODE, 0xd53b_e000).unwrap(); // MRS x0,CNTFRQ_EL0
+    memory.write_u32(CODE + 4, 0xd53b_e041).unwrap(); // MRS x1,CNTVCT_EL0
+    let mut cpu = Cpu::new();
+    cpu.set_linux_counter(true);
+    cpu.regs.pc = CODE;
+    assert_eq!(cpu.step(&mut memory).unwrap(), StepResult::Continue);
+    assert_eq!(cpu.regs.read_x(0), 1_000_000_000);
+    assert_eq!(cpu.step(&mut memory).unwrap(), StepResult::Continue);
+    assert!(cpu.regs.read_x(1) > 0);
+}
+
+#[test]
 fn signed_byte_load_preserves_destination_width() {
     for raw in [0x39c0_0020, 0x38c0_0020] {
         // LDRSB/LDURSB W0, [X1]
