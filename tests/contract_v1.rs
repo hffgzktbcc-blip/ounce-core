@@ -151,6 +151,8 @@ const SVC_UNKNOWN: u32 = 0xD400_1FE1; // svc #0xff
 const SVC_PRESENT: u32 = 0xD400_0301; // svc #0x18
 const BRK_0: u32 = 0xD420_0000;
 const UDF_0: u32 = 0x0000_0000;
+/// `RMIF x0, #0, #1`: a valid FEAT_FlagM encoding that ounce-core does not decode yet.
+const RMIF: u32 = 0xBA00_0401;
 const B_SELF: u32 = 0x1400_0000;
 /// `movz x1,#0x10; ldr x0,[x1]`: a load from unmapped memory.
 const LOAD_UNMAPPED: [u32; 2] = [0xD280_0201, 0xF940_0020];
@@ -392,10 +394,17 @@ fn cases() -> &'static [Case] {
             ),
         );
         add(
-            "run-elf udf",
+            "run-elf unimplemented insn",
             71,
             ("unimplemented_insn", 10),
-            run_bytes("e71b", "run-elf", &elf(&[UDF_0]), &elf_args, &[]),
+            run_bytes("e71b", "run-elf", &elf(&[RMIF]), &elf_args, &[]),
+        );
+        // UDF is architecturally UNDEFINED: with no handler the Linux guest dies of SIGILL (128 + 4).
+        add(
+            "run-elf udf",
+            132,
+            ("cpu_error", 12),
+            run_bytes("e72b", "run-elf", &elf(&[UDF_0]), &elf_args, &[]),
         );
         add(
             "run-elf not an ELF",

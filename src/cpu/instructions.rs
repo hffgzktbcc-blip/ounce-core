@@ -928,6 +928,8 @@ pub enum Instruction {
 
     /// Unimplemented or Unknown instruction (preserves raw 32-bit opcode for debugging)
     Unimplemented { raw: u32 },
+    /// `CLREX`: clears the local exclusive monitor.
+    Clrex,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

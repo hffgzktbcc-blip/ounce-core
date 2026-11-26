@@ -1,8 +1,18 @@
-//! Synchronous Linux AArch64 SIGSEGV delivery. Frames follow the Linux UAPI
+//! Synchronous Linux AArch64 SIGSEGV, SIGBUS and SIGILL delivery. Frames follow the Linux UAPI
 //! rt_sigframe/ucontext layout; guest handlers may return or siglongjmp away.
 use super::syscalls::{EFAULT, EINVAL, ESRCH, Outcome, PID, Process};
-use crate::cpu::{Cpu, CpuError};
+use crate::cpu::{Cpu, CpuError, Instruction};
 use crate::mmu::{Memory, MemoryError, Permission};
+
+/// What became of a fault the engine reported.
+pub(super) enum SyncFault {
+    /// A guest handler now runs.
+    Delivered,
+    /// Not a guest fault, or `SIGSEGV` with no usable handler: the runner reports it as a CPU stop.
+    NotDelivered,
+    /// `SIGILL` or `SIGBUS` that no handler takes: the process dies of that signal, status `128 + signal`.
+    Fatal(i32),
+}
 
 const FRAME_SIZE: u64 = 4688;
 const MC: u64 = 128 + 176;
@@ -95,22 +105,32 @@ impl Process {
         }
     }
 
-    pub(super) fn deliver_segv(&mut self, cpu: &mut Cpu, mmu: &mut Memory, pc: u64) -> bool {
-        let action = self.sigactions[11];
-        let handler = u64::from_le_bytes(action[0..8].try_into().unwrap());
-        if handler <= 1 || self.signal_mask & (1 << 10) != 0 {
-            return false;
-        }
-        // Re-step a clone: only actual data/access faults become SIGSEGV, never
-        // unsupported instructions or an engine disagreement. Preserve fault state.
+    /// Turns the fault the engine reported at `pc` into the signal Linux raises for it, using the same
+    /// frame for all three:
+    /// - an access to unmapped or protected memory: `SIGSEGV` (`SEGV_MAPERR`/`SEGV_ACCERR`, `si_addr` = address);
+    /// - a misaligned exclusive: `SIGBUS` with `BUS_ADRALN` and `si_addr` = address (`arch/arm64/mm/fault.c`,
+    ///   `do_alignment_fault`);
+    /// - an UNDEFINED encoding or an EL0 access to a system register Linux does not expose: `SIGILL` with
+    ///   `ILL_ILLOPC` and `si_addr` = the faulting PC (`arch/arm64/kernel/traps.c`, `do_el0_undef`; `do_el0_sys`
+    ///   falls back to it).
+    ///
+    /// `SIGILL` and `SIGBUS` are forced signals: with no handler, or with the signal ignored or blocked, the
+    /// kernel resets the action to default and the process dies, so those return [`SyncFault::Fatal`].
+    /// `SIGSEGV` without a handler stays [`SyncFault::NotDelivered`] (reported as a memory fault).
+    pub(super) fn deliver_fault(&mut self, cpu: &mut Cpu, mmu: &mut Memory, pc: u64) -> SyncFault {
+        // Re-step a clone to learn why the instruction failed. Only guest faults become signals, never
+        // unimplemented instructions or an engine disagreement. Preserve fault state.
         let mut probe = Cpu::new();
         probe.regs = cpu.regs.clone();
         probe.regs.pc = pc;
+        probe.exclusive = cpu.exclusive;
+        probe.linux_user = cpu.linux_user;
         let Some(mut snapshot) = mmu.fault_snapshot() else {
-            return false;
+            return SyncFault::NotDelivered;
         };
-        let (addr, code) = match probe.step(&mut snapshot) {
+        let (sig, addr, code) = match probe.step(&mut snapshot) {
             Err(CpuError::Memory(MemoryError::Unmapped { addr })) => (
+                11u64,
                 addr,
                 if self.covered(addr, addr.saturating_add(1), mmu) {
                     2u32
@@ -118,9 +138,21 @@ impl Process {
                     1u32
                 },
             ),
-            Err(CpuError::Memory(MemoryError::PermissionDenied { addr, .. })) => (addr, 2u32),
-            _ => return false,
+            Err(CpuError::Memory(MemoryError::PermissionDenied { addr, .. })) => (11, addr, 2u32),
+            Err(CpuError::Memory(MemoryError::Misaligned { addr, .. })) => (7, addr, 1), // BUS_ADRALN
+            Err(CpuError::Undefined { .. } | CpuError::IllegalSystemRegister { .. }) => (4, pc, 1), // ILL_ILLOPC
+            _ => return SyncFault::NotDelivered,
         };
+        let action = self.sigactions[sig as usize];
+        let handler = u64::from_le_bytes(action[0..8].try_into().unwrap());
+        let bit = 1u64 << (sig - 1);
+        if handler <= 1 || self.signal_mask & bit != 0 {
+            return if sig == 11 {
+                SyncFault::NotDelivered
+            } else {
+                SyncFault::Fatal(sig as i32)
+            };
+        }
         let flags = u64::from_le_bytes(action[8..16].try_into().unwrap());
         let alt = self.alt_stack;
         let on_alt = alt[1] != 2 && cpu.regs.sp >= alt[0] && cpu.regs.sp < alt[0].saturating_add(alt[2]);
@@ -129,20 +161,25 @@ impl Process {
         } else {
             cpu.regs.sp
         };
-        let Some(frame) = top.checked_sub(FRAME_SIZE).map(|v| v & !15) else {
-            return false;
+        // As `get_sigframe`: a 16-byte frame record {fp, lr} sits at the top and the rt_sigframe below it.
+        let Some(record) = top.checked_sub(16).map(|v| v & !15) else {
+            return SyncFault::NotDelivered;
+        };
+        let Some(frame) = record.checked_sub(FRAME_SIZE) else {
+            return SyncFault::NotDelivered;
         };
         let mut data = vec![0u8; FRAME_SIZE as usize];
         let put =
             |data: &mut [u8], off: u64, v: u64| data[off as usize..off as usize + 8].copy_from_slice(&v.to_le_bytes());
-        put(&mut data, 0, 11);
+        put(&mut data, 0, sig);
         data[8..12].copy_from_slice(&code.to_le_bytes());
         put(&mut data, 16, addr);
         put(&mut data, 128 + 16, alt[0]);
         put(&mut data, 128 + 24, if on_alt { 1 } else { alt[1] });
         put(&mut data, 128 + 32, alt[2]);
         put(&mut data, 128 + 40, self.signal_mask);
-        put(&mut data, MC, addr);
+        // fault_address: the faulting address, but 0 for SIGILL (`arm64_notify_die` clears it).
+        put(&mut data, MC, if sig == 4 { 0 } else { addr });
         for i in 0..31 {
             put(&mut data, MC + 8 + i * 8, cpu.regs.x[i as usize]);
         }
@@ -155,8 +192,26 @@ impl Process {
             data[(FP + 16) as usize + i * 16..(FP + 16) as usize + (i + 1) * 16]
                 .copy_from_slice(&cpu.regs.v[i].to_le_bytes());
         }
-        if mmu.write_bytes(frame, &data).is_err() {
-            return false;
+        if sig == 7 {
+            // esr_context after fpsimd_context (`setup_sigframe`: present whenever `fault_code` is set; SIGILL
+            // from `arm64_notify_die` has none). The alignment-fault ESR: EC 0x24 (data abort from a lower EL),
+            // IL, DFSC 0x21, plus WnR (bit 6) when the instruction is a store-exclusive.
+            let is_store = mmu.read_u32(pc).is_ok_and(|w| {
+                matches!(
+                    crate::cpu::decoder::decode(w),
+                    Instruction::LoadStoreExclusive { is_load: false, .. }
+                        | Instruction::LoadStoreExclusivePair { is_load: false, .. }
+                )
+            });
+            let esr = 0x24u64 << 26 | 1 << 25 | (is_store as u64) << 6 | 0x21;
+            put(&mut data, FP + 528, 0x4553_5201 | 16 << 32); // ESR_MAGIC, size 16
+            put(&mut data, FP + 536, esr);
+        }
+        if mmu.write_bytes(frame, &data).is_err()
+            || mmu.write_u64(record, cpu.regs.x[29]).is_err()
+            || mmu.write_u64(record + 8, cpu.regs.x[30]).is_err()
+        {
+            return SyncFault::NotDelivered;
         }
         if !mmu.is_mapped(TRAMPOLINE) {
             mmu.map_range(TRAMPOLINE, 4096, Permission::READ_WRITE_EXECUTE);
@@ -165,23 +220,27 @@ impl Process {
         }
         self.signal_mask |= u64::from_le_bytes(action[24..32].try_into().unwrap());
         if flags & 0x40000000 == 0 {
-            self.signal_mask |= 1 << 10;
+            self.signal_mask |= bit;
         }
         if flags & 0x80000000 != 0 {
-            self.sigactions[11] = [0; 32];
+            self.sigactions[sig as usize] = [0; 32];
         }
         cpu.regs.pstate.btype = 0;
         cpu.regs.sp = frame;
         cpu.regs.pc = handler;
-        cpu.regs.x[0] = 11;
-        cpu.regs.x[1] = frame;
-        cpu.regs.x[2] = frame + 128;
+        cpu.regs.x[0] = sig;
+        cpu.regs.x[29] = record;
+        if flags & 4 != 0 {
+            // SA_SIGINFO: only then do x1 and x2 point at siginfo and ucontext (`setup_rt_frame`).
+            cpu.regs.x[1] = frame;
+            cpu.regs.x[2] = frame + 128;
+        }
         cpu.regs.x[30] = if flags & 0x04000000 != 0 {
             u64::from_le_bytes(action[16..24].try_into().unwrap())
         } else {
             TRAMPOLINE
         };
-        true
+        SyncFault::Delivered
     }
 
     pub(super) fn signal_return(&mut self, cpu: &mut Cpu, mmu: &Memory) -> Result<(), MemoryError> {
