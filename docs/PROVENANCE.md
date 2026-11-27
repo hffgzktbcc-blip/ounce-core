@@ -7,7 +7,7 @@ Maintained by the project. This register records the source provenance, build ev
 | Group | Items / Status |
 |---|---|
 | **Done** | Current tree and 16 release assets scan clean; 11 NROs rebuild byte-for-byte; fixture validator and CODEOWNERS merged; notice packaging lock merged. |
-| **Owner items** | 1. GitHub `refs/pull/1/head` retains 23 historical objects: support ticket SENT by owner, awaiting GitHub.<br>2. 72-byte third-party program in wider history: owner decided remove, needs targeted history rewrite or written risk acceptance, deferred until open PRs merge. |
+| **Owner items** | 1. GitHub `refs/pull/1/head` retains 23 historical objects: support ticket SENT by owner, awaiting GitHub.<br>2. 72-byte third-party program in wider history: removed from every branch and tag by a history rewrite on 27 November 2026 (#483). |
 | **Specialist items** | objc2/Apple SDK and Rust runtime notices; `RELEASE_NOTICE_REVIEW.json` reviewer. |
 
 ---
@@ -100,8 +100,8 @@ Ported MIT code adheres to the sources policy in [CLEAN_ROOM.md](CLEAN_ROOM.md).
 
 - **Current tree and release assets:** The current source tree and 16 release assets have been scanned clean for exact matches of suspect byte sequences. All release assets match their recorded SHA-256 digests.
 - **`refs/pull/1/head`:** Retains 23 historical objects (21 historical source-file versions containing 12 firmware-labelled byte arrays, plus 2 standalone files). These objects are reachable solely from the host-managed `refs/pull/1/head` reference and are absent from all branches and tags. The repository owner has submitted a support ticket to GitHub requesting removal of this reference and garbage collection, and is awaiting GitHub's response.
-- **72-byte third-party program:** A 72-byte compiled test function from `pepsipu/ns2jb` was historically committed in early revisions. The owner decided on 8 November 2026 to remove the program rather than seek an upstream grant. The bytes are absent from current code. Removing them from historical commits requires a targeted history rewrite (or written risk acceptance), which is deferred until open PRs merge to prevent disruptive commit rebases.
-- **No global rewrite:** No branch or release tag history has been rewritten.
+- **72-byte third-party program:** A 72-byte compiled test function from `pepsipu/ns2jb` was historically committed in early revisions. The owner decided on 8 November 2026 to remove the program rather than seek an upstream grant. The bytes are absent from current code. On 27 November 2026, with the owner's approval, the repository's history was rewritten to remove them from every branch and tag; a fresh clone has 0 matches. Old commit IDs map to new ones in [history/commit-id-map-2026-11-27.txt](history/commit-id-map-2026-11-27.txt). Copies remain reachable only through GitHub's pull-request references, until GitHub Support purges them, and in forks the project does not control.
+- **History rewrite (27 November 2026):** Branch and tag history was rewritten once, only to remove the 72-byte program; every file, tag and release is otherwise unchanged. Pull-request references (`refs/pull/*`) are managed by GitHub and could not be rewritten.
 
 ## Notice packaging and release controls
 

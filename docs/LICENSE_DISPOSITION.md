@@ -14,7 +14,7 @@ the earlier inventory or the merged controls have not been performed.
 | Standalone Python toolkit 0.2.0 | Published from its reviewed 30-file parentless snapshot; contains project Python and observation data, no runtime, SDK, NRO, fonts or historical tree | Separate release scope; it is not blocked by runtime/fixture history questions |
 | Eleven legacy NRO fixtures | All eleven have registered identities and byte-identical rebuild evidence in `tests/fixtures/`; used as test inputs, not included in the runtime packager's explicit archive entries | Rebuild identity does not prove source authorship or all linked-component redistribution rights; GitHub's full-repository source archives still contain these inputs |
 | Historical firmware-labelled candidate objects | The later object-level inventory isolates twelve arrays and two standalone objects to retained PR #1; current source and the inspected release archives had no exact matches | Host-managed PR reference treatment remains separate; no public purge is claimed |
-| Historical 72-byte outside program | Re-identified from the old source attribution as `pepsipu/ns2jb` `engine/switch2/process/test-function.bin`; the recorded permission search found no grant | Exact identity is in this row. The unsent permission-request draft was deleted on 2026-11-12 (see [CAPABILITY_SCOPE.md](CAPABILITY_SCOPE.md)); no unknown licence is converted to MIT and no history is rewritten |
+| Historical 72-byte outside program | Re-identified from the old source attribution as `pepsipu/ns2jb` `engine/switch2/process/test-function.bin`; the recorded permission search found no grant | Exact identity is in this row. The unsent permission-request draft was deleted on 2026-11-12 (see [CAPABILITY_SCOPE.md](CAPABILITY_SCOPE.md)); no unknown licence is converted to MIT. The program was removed from branch and tag history on 27 November 2026 (#483) |
 
 ## Objective-C notices and the SDK distinction
 
@@ -82,8 +82,8 @@ Tracked as issues #308–#311. Each is an owner-directed engineering record, not
 
 | Issue | Outcome recorded | Still open |
 | --- | --- | --- |
-| #308, 72-byte program | Owner decision of 8 November 2026 (item 2 in [PROVENANCE.md](PROVENANCE.md) Owner items) stands: remove, do not seek a grant. The program is absent from the current tree. The request draft was deleted on 2026-11-12 and is not to be sent (see [CAPABILITY_SCOPE.md](CAPABILITY_SCOPE.md)). The program stays treated as unpermitted. | Removing it from history needs an explicit old-to-new ref map and approval. Not done. |
-| #309, objects isolated to PR #1 | Option (b) in the decisions table: leave the host-managed reference and document it. No request was sent to GitHub Support and no purge is claimed. | Option (a), asking GitHub Support to hide or purge `refs/pull/1/head`, can be chosen later. |
+| #308, 72-byte program | Owner decision of 8 November 2026 (item 2 in [PROVENANCE.md](PROVENANCE.md) Owner items) stands: remove, do not seek a grant. The program is absent from the current tree. The request draft was deleted on 2026-11-12 and is not to be sent (see [CAPABILITY_SCOPE.md](CAPABILITY_SCOPE.md)). The program stays treated as unpermitted. | Done: removed from branch and tag history on 27 November 2026 with the owner's approval; the old-to-new commit map is [history/commit-id-map-2026-11-27.txt](history/commit-id-map-2026-11-27.txt). |
+| #309, objects isolated to PR #1 | Option (a): the owner asked GitHub Support to remove `refs/pull/1/head` and purge its objects. No purge is claimed until GitHub confirms. | Waiting on GitHub Support. |
 | #310, Mac app and optional features | Kept source-only. No prebuilt Mac app or optional-feature build is offered, and the README says to build from source. The app's system `WKWebView` adds no third-party dependency. | Specialist review of the objc2 and Apple SDK terms before any prebuilt app is distributed. |
 | #311, eleven legacy NRO fixtures | Owner-directed review on 10 November 2026: the owner is the reviewer of record. All eleven are `VERIFIED` in `tests/fixtures/provenance.json` on this basis: project-written sources, byte-identical rebuilds, and notices for the linked components in [tests/fixtures/nro/NOTICES.md](../tests/fixtures/nro/NOTICES.md) (libnx ISC, newlib, libgcc runtime exception). This is not a specialist legal opinion and not a grant from any third party. | GitHub source archives still contain the binaries, now as reviewed test inputs. |
 
@@ -98,7 +98,9 @@ The dated object-level report narrows the historical case substantially. It does
 not justify rewriting all main/tag history based only on reachability of an old
 commit. No rewrite, asset deletion/replacement, Support message or third-party
 contact was performed here. Preserve the existing private evidence and use exact
-object/ref scope for any later approved action. Do not reopen the broad audit
+object/ref scope for any later approved action. (Later, with the owner's approval: a targeted rewrite on
+27 November 2026 removed only the 72-byte program from branch and tag history, and the owner asked GitHub
+Support about `refs/pull/1/head`; see the table above.) Do not reopen the broad audit
 without new material evidence or a relevant distribution change.
 
 ## Normal release qualification — 9 November 2026
