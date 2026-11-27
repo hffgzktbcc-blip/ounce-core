@@ -321,7 +321,10 @@ fn decode_fixed_point_scalar_converts() {
     assert_eq!(decoder::decode(0x5f19_fc02), want(Fcvtzs, 16, 7));
     assert_eq!(decoder::decode(0x7f11_fc02), want(Fcvtzu, 16, 15));
     // reserved: immh = 0001
-    assert!(matches!(decoder::decode(0x5f09_e402), Instruction::Unimplemented { .. }));
+    assert!(matches!(
+        decoder::decode(0x5f09_e402),
+        Instruction::Unimplemented { .. }
+    ));
     // the neighbouring scalar shifts still decode as shifts (SSHR d2, d0, #3 = 0x5f7d0402)
     assert!(!matches!(
         decoder::decode(0x5f7d_0402),
