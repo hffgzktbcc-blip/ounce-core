@@ -2955,9 +2955,9 @@ impl Cpu {
             }
 
             Instruction::SimdFpThreeSameHalf { rd, rn, rm, op, q } => {
-                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs
-                    .write_q(rd, simd::fp16_three_same_fpcr(op, n, m, q, self.regs.fpcr));
+                    .write_q(rd, simd::fp16_three_same_fpcr(op, d, n, m, q, self.regs.fpcr));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -3048,40 +3048,9 @@ impl Cpu {
 
             Instruction::FpScalarThreeSame { rd, rn, rm, op, esize } => {
                 if esize == 16 {
-                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
                     let a = (self.regs.read_q(rn) & 0xFFFF) as u64;
                     let b = (self.regs.read_q(rm) & 0xFFFF) as u64;
-                    let r = match op {
-                        SimdFpOp3::Frecps => (softfp::recip_step(softfp::F16, env, a, b) & 0xFFFF) as u128,
-                        SimdFpOp3::Frsqrts => (softfp::rsqrt_step(softfp::F16, env, a, b) & 0xFFFF) as u128,
-                        SimdFpOp3::Fcmeq
-                        | SimdFpOp3::Fcmge
-                        | SimdFpOp3::Fcmgt
-                        | SimdFpOp3::Facge
-                        | SimdFpOp3::Facgt => {
-                            let (va, vb) = if matches!(op, SimdFpOp3::Facge | SimdFpOp3::Facgt) {
-                                (softfp::F16.abs(a), softfp::F16.abs(b))
-                            } else {
-                                (a, b)
-                            };
-                            softfp::raise_compare(softfp::F16, va, vb, op != SimdFpOp3::Fcmeq);
-                            let fa = softfp::flush_input(softfp::F16, env, va);
-                            let fb = softfp::flush_input(softfp::F16, env, vb);
-                            let (n, z, _c, v) = softfp::compare_f16_nzcv(fa, fb);
-                            let pass = if v {
-                                false
-                            } else {
-                                match op {
-                                    SimdFpOp3::Fcmeq => z,
-                                    SimdFpOp3::Fcmge | SimdFpOp3::Facge => !n,
-                                    SimdFpOp3::Fcmgt | SimdFpOp3::Facgt => !n && !z,
-                                    _ => unreachable!(),
-                                }
-                            };
-                            if pass { 0xFFFFu128 } else { 0u128 }
-                        }
-                        _ => unreachable!("unsupported scalar three-same half op"),
-                    };
+                    let r = (simd::fp16_op3_fpcr(op, 0, a, b, self.regs.fpcr) & 0xFFFF) as u128;
                     self.regs.write_q(rd, r);
                 } else {
                     let is_double = esize == 64;
@@ -3876,6 +3845,87 @@ mod tests {
             assert_eq!(cpu.regs.read_q(0), want as u128, "fpcr {fpcr:#x}");
             assert_eq!(cpu.regs.fpsr, 0, "fpcr {fpcr:#x}");
         }
+    }
+
+    #[test]
+    fn fp16_vector_three_same_and_scalar_fmulx_faddp() {
+        // #469: FEAT_FP16 three-same on .4H/.8H, scalar FMULX H and FADDP Hd, Vn.2H (words from llvm-mc 18)
+        let h = |lanes: &[u16]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (16 * i))
+        };
+        let words = [
+            0x4E42_1420, // fadd v0.8h, v1.8h, v2.8h
+            0x0EC2_1423, // fsub v3.4h, v1.4h, v2.4h
+            0x6E42_1C24, // fmul v4.8h, v1.8h, v2.8h
+            0x2E42_3C25, // fdiv v5.4h, v1.4h, v2.4h
+            0x4E42_0C26, // fmla v6.8h, v1.8h, v2.8h
+            0x2EC1_1447, // fabd v7.4h, v2.4h, v1.4h
+            0x0E42_3C28, // frecps v8.4h, v1.4h, v2.4h
+            0x6E42_1429, // faddp v9.8h, v1.8h, v2.8h
+            0x2E42_242A, // fcmge v10.4h, v1.4h, v2.4h
+            0x2EC2_2C2B, // facgt v11.4h, v1.4h, v2.4h
+            0x5E4E_1DAC, // fmulx h12, h13, h14
+            0x5E30_D82F, // faddp h15, v1.2h
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            // v1 = 1, 2, 3, 4, 0.5, -1, 1.5, 2 and v2 = 2, 2, 0.5, -4, 1, 1, 2, 2
+            c.regs
+                .write_q(1, h(&[0x3C00, 0x4000, 0x4200, 0x4400, 0x3800, 0xBC00, 0x3E00, 0x4000]));
+            c.regs
+                .write_q(2, h(&[0x4000, 0x4000, 0x3800, 0xC400, 0x3C00, 0x3C00, 0x4000, 0x4000]));
+            c.regs.write_q(6, h(&[0x3C00; 8]));
+            c.regs.write_q(12, u128::MAX);
+            c.regs.write_q(13, h(&[0x7C00, 0x7C01]));
+            c.regs.write_q(14, h(&[0x8000, 0x7C01]));
+            c.regs.write_q(15, u128::MAX);
+        });
+        assert_eq!(
+            cpu.regs.read_q(0),
+            h(&[0x4200, 0x4400, 0x4300, 0, 0x3E00, 0, 0x4300, 0x4400])
+        );
+        assert_eq!(
+            cpu.regs.read_q(3),
+            h(&[0xBC00, 0, 0x4100, 0x4800]),
+            "4H zeroes the top half"
+        );
+        assert_eq!(
+            cpu.regs.read_q(4),
+            h(&[0x4000, 0x4400, 0x3E00, 0xCC00, 0x3800, 0xBC00, 0x4200, 0x4400])
+        );
+        assert_eq!(cpu.regs.read_q(5), h(&[0x3800, 0x3C00, 0x4600, 0xBC00]));
+        assert_eq!(
+            cpu.regs.read_q(6),
+            h(&[0x4200, 0x4500, 0x4100, 0xCB80, 0x3E00, 0, 0x4400, 0x4500]),
+            "1 + n * m"
+        );
+        assert_eq!(cpu.regs.read_q(7), h(&[0x3C00, 0, 0x4100, 0x4800]));
+        assert_eq!(cpu.regs.read_q(8), h(&[0, 0xC000, 0x3800, 0x4C80]), "FRECPS: 2 - n * m");
+        assert_eq!(
+            cpu.regs.read_q(9),
+            h(&[0x4200, 0x4700, 0xB800, 0x4300, 0x4400, 0xC300, 0x4000, 0x4400])
+        );
+        assert_eq!(cpu.regs.read_q(10), h(&[0, 0xFFFF, 0xFFFF, 0xFFFF]));
+        assert_eq!(cpu.regs.read_q(11), h(&[0, 0, 0xFFFF, 0]), "|3| > |0.5| only");
+        assert_eq!(
+            cpu.regs.read_q(12),
+            0xC000,
+            "FMULX inf * -0 = -2, lane 1 sNaNs not read"
+        );
+        assert_eq!(cpu.regs.read_q(15), 0x4200, "1 + 2, rest zeroed");
+        assert_eq!(cpu.regs.fpsr, 0, "exact results raise no flags");
+
+        // FCMGE is a signalling compare: a quiet NaN lane is false and raises IOC
+        let (cpu, _) = run(&[0x2E42_242A], |c, _| {
+            c.regs.write_q(1, h(&[0x7E00, 0x3C00]));
+            c.regs.write_q(2, h(&[0x3C00, 0x3C00]));
+        });
+        assert_eq!(
+            (cpu.regs.read_q(10), cpu.regs.fpsr),
+            (h(&[0, 0xFFFF, 0xFFFF, 0xFFFF]), 1)
+        );
     }
 
     #[test]

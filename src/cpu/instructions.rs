@@ -716,7 +716,7 @@ pub enum Instruction {
         /// number of lanes reduced (2, 4 or 8)
         lanes: u8,
     },
-    /// Half-precision `FMAXNM/FMINNM/FMAX/FMIN` and the pairwise forms on `.4H`/`.8H` (FEAT_FP16 three-same).
+    /// FEAT_FP16 three-same on `.4H`/`.8H`: arithmetic, `FMLA`/`FMLS`, compares, `FRECPS`/`FRSQRTS`, min/max and pairwise.
     SimdFpThreeSameHalf {
         rd: u8,
         rn: u8,

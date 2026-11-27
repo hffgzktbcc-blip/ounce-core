@@ -1814,6 +1814,7 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     if (raw & 0xDF60_0400) == 0x5E40_0400 {
         let a = (raw >> 23) & 1 == 1;
         let op = match ((raw >> 11) & 0x1F, u, a) {
+            (0b00011, false, false) => Some(SimdFpOp3::Fmulx),
             (0b00111, false, false) => Some(SimdFpOp3::Frecps),
             (0b00111, false, true) => Some(SimdFpOp3::Frsqrts),
             (0b00010, true, true) => Some(SimdFpOp3::Fabd),
@@ -1938,18 +1939,33 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     }
 
     // 27c2. AdvSIMD three same, half precision (FEAT_FP16): 0 Q U 01110 a 10 Rm 00 opcode 1 Rn Rd.
-    //       Only the FMAX/FMIN family is decoded: opcode 000 (NM) and 110, U = 1 for the pairwise forms.
-    if (raw & 0x9F60_C400) == 0x0E40_0400 && matches!((raw >> 11) & 7, 0b000 | 0b110) {
+    if (raw & 0x9F60_C400) == 0x0E40_0400 {
         let a = (raw >> 23) & 1 == 1;
         let op = match ((raw >> 11) & 7, u, a) {
             (0b000, false, false) => SimdFpOp3::Fmaxnm,
-            (0b000, false, true) => SimdFpOp3::Fminnm,
+            (0b001, false, false) => SimdFpOp3::Fmla,
+            (0b010, false, false) => SimdFpOp3::Fadd,
+            (0b011, false, false) => SimdFpOp3::Fmulx,
+            (0b100, false, false) => SimdFpOp3::Fcmeq,
             (0b110, false, false) => SimdFpOp3::Fmax,
+            (0b111, false, false) => SimdFpOp3::Frecps,
+            (0b000, false, true) => SimdFpOp3::Fminnm,
+            (0b001, false, true) => SimdFpOp3::Fmls,
+            (0b010, false, true) => SimdFpOp3::Fsub,
             (0b110, false, true) => SimdFpOp3::Fmin,
+            (0b111, false, true) => SimdFpOp3::Frsqrts,
             (0b000, true, false) => SimdFpOp3::Fmaxnmp,
-            (0b000, true, true) => SimdFpOp3::Fminnmp,
+            (0b010, true, false) => SimdFpOp3::Faddp,
+            (0b011, true, false) => SimdFpOp3::Fmul,
+            (0b100, true, false) => SimdFpOp3::Fcmge,
+            (0b101, true, false) => SimdFpOp3::Facge,
             (0b110, true, false) => SimdFpOp3::Fmaxp,
-            (_, true, true) => SimdFpOp3::Fminp,
+            (0b111, true, false) => SimdFpOp3::Fdiv,
+            (0b000, true, true) => SimdFpOp3::Fminnmp,
+            (0b010, true, true) => SimdFpOp3::Fabd,
+            (0b100, true, true) => SimdFpOp3::Fcmgt,
+            (0b101, true, true) => SimdFpOp3::Facgt,
+            (0b110, true, true) => SimdFpOp3::Fminp,
             _ => return None,
         };
         return Some(Instruction::SimdFpThreeSameHalf { rd, rn, rm, op, q });
@@ -2106,9 +2122,16 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         (0xDF3E_0C00, 0x5E30_0800, true),
     ] {
         let opcode = (raw >> 12) & 0x1F;
-        // Scalar FADDP Sd/Dd, Vn.2S/2D (opcode 01101, U = 1, bit 23 = 0): sum of the two lanes.
-        if scalar && (raw & mask) == want && opcode == 0b01101 && u && (raw >> 23) & 1 == 0 {
-            let esize = if (raw >> 22) & 1 == 1 { 64 } else { 32 };
+        // Scalar FADDP Sd/Dd, Vn.2S/2D (opcode 01101, U = 1, bit 23 = 0): sum of the two lanes; U = 0 (sz = 0) is
+        // FADDP Hd, Vn.2H.
+        if scalar && (raw & mask) == want && opcode == 0b01101 && (raw >> 23) & 1 == 0 && (u || (raw >> 22) & 1 == 0) {
+            let esize = if !u {
+                16
+            } else if (raw >> 22) & 1 == 1 {
+                64
+            } else {
+                32
+            };
             return Some(Instruction::SimdFpReduce {
                 rd,
                 rn,
@@ -2802,8 +2825,9 @@ mod tests {
                 other => panic!("{raw:#010x}: {other:?}"),
             }
         }
-        // reserved: .2D across lanes (sz = 1); scalar half pairwise with sz = 1; FP16 three-same with an undecoded opcode
-        for raw in [0x6E70_F820u32, 0x5E70_F820, 0x4E42_1420, 0x4E42_3C20] {
+        // reserved: .2D across lanes (sz = 1); scalar half pairwise with sz = 1; FP16 three-same unallocated opcodes
+        // (U = 0, a = 1, opcode 011 and U = 1, a = 0, opcode 001: invalid in llvm-mc 18)
+        for raw in [0x6E70_F820u32, 0x5E70_F820, 0x4EC2_1C20, 0x6E42_0C20] {
             assert!(
                 !matches!(
                     decode(raw),
