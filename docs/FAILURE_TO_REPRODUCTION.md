@@ -46,7 +46,7 @@ The NRO remains local and is not distributed in this walkthrough.
 
 | Recorded revision | Cargo exit | Interpreter / Tier-3 result |
 | --- | --- | --- |
-| Failure `0e5c340` | 101 (expected oracle failure) | ExitProcess, PC `0x000000007ffe0004`, 9,104,054 instructions, no queued frames |
+| Failure `66973a8` | 101 (expected oracle failure) | ExitProcess, PC `0x000000007ffe0004`, 9,104,054 instructions, no queued frames |
 | Reference `bc46c76` | 0 | FrameLimit, PC `0x0000000080494204`, 172,663,220 instructions, both registered frames pass |
 
 [Replay observations and manifest](reproduce/sdl2-failure/replay-2026-11-07/manifest.json)

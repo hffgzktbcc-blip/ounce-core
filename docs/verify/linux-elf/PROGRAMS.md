@@ -16,7 +16,7 @@ Tier-4 outputs are byte-identical (KISS FFT is compared with qemu only; it also 
 eight of the new programs (all except CoreMark and KISS FFT) also ran clean under AddressSanitizer; UBSan reported only
 benign misaligned loads (FastLZ) and a signed shift (SHA-1). Native (`--cpu=native`, ARM64 hosts only), macOS and
 Windows were **not** run for these programs. A new Linux-only CI step runs them on every PR; macOS and Windows stay
-covered only for LZ4, xxHash, cJSON and zlib. The Linux CI step has since run: the Differential verification workflow succeeded on main at `90c7649` ([run 42897000107](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42897000107)).
+covered only for LZ4, xxHash, cJSON and zlib. The Linux CI step has since run: the Differential verification workflow succeeded on main at `52a4175` ([run 42897000107](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42897000107)).
 
 | Program (pinned) | Licence | Instructions (Tier-3) | Checked against |
 |---|---|---|---|
@@ -45,7 +45,7 @@ interpreter and Tier-4 unit tests; the original failures were captured first.
 
 ## Not working, and limits
 
-- **wasm3 (`#366`)**: Previously stopped on musl/wasm3's oversized `PROT_NONE | MAP_NORESERVE` arena reservation; resolved in `#429` (`8cc0ecf`) by tracking sparse virtual reservations separately from backed MMU pages and delivering synchronous guest `SIGSEGV` frames (`rt_sigframe` / `rt_sigreturn`). See [wasm3-366.md](wasm3-366.md).
+- **wasm3 (`#366`)**: Previously stopped on musl/wasm3's oversized `PROT_NONE | MAP_NORESERVE` arena reservation; resolved in `#429` (`d0b5ca4`) by tracking sparse virtual reservations separately from backed MMU pages and delivering synchronous guest `SIGSEGV` frames (`rt_sigframe` / `rt_sigreturn`). See [wasm3-366.md](wasm3-366.md).
 - Host x86-64 and AArch64 legitimately differ for wasm3 (default-NaN sign), so wasm3 must use qemu as its reference.
 - The programs' own hazards, avoided in the cases: `base64_decode` reads `in[-1]` for empty input (crypto-algorithms),
   and it scans to the end of its input, so encoded buffers are NUL-terminated.

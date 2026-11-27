@@ -3,7 +3,7 @@
 **Ounce-Core maintainers**  
 **Technical preprint · Version 0.1 · 9 November 2026**  
 **Status:** Public project research report; not peer reviewed or independently replicated.  
-**Source snapshot:** [`c7a0ed9d8b83f73d0c090d129f2d9b06e0453108`](https://github.com/hffgzktbcc-blip/ounce-core/tree/c7a0ed9d8b83f73d0c090d129f2d9b06e0453108). Results cited below were generated at multiple earlier commits; the snapshot is a documentation anchor, not a claim that every experiment ran at this exact commit.
+**Source snapshot:** [`3be8699889a7734d7e7615f9cede335b4823ee93`](https://github.com/hffgzktbcc-blip/ounce-core/tree/3be8699889a7734d7e7615f9cede335b4823ee93). Results cited below were generated at multiple earlier commits; the snapshot is a documentation anchor, not a claim that every experiment ran at this exact commit.
 
 > **Reading note (20 November 2026):** This reports the 9 November research snapshot, not an up-to-date capability checklist. The subsequent [Ounce-Core v0.10.0 release](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.10.0) documents newer bounded results. The findings and numeric measurements below remain attributed to their original dates; no independent outside reproduction is claimed.
 
@@ -130,7 +130,7 @@ The source and experimental descriptions are public in the [Ounce-Core repositor
 ```sh
 git clone https://github.com/hffgzktbcc-blip/ounce-core
 cd ounce-core
-git checkout c7a0ed9d8b83f73d0c090d129f2d9b06e0453108
+git checkout 3be8699889a7734d7e7615f9cede335b4823ee93
 git rev-parse HEAD
 cargo build --release --features "nce native-jit"
 python3 scripts/verify_differential.py --nro --json differential-result.json

@@ -3,7 +3,7 @@
 > **DRAFT. Nothing in this file is frozen.** Issue #481 asks for the v1.0 freeze of `ounce.run.v1`,
 > `ounce.repro.v1`, `ounce.trace.v1`, the exit codes and the DX flags. The freeze is an **owner decision**. This file
 > and `tests/contract_v1.rs` are the material for that decision: the initial snapshot at commit
-> `b24002b`, updated for the v0.10.0 release, plus compatibility tests that would enforce it. Until the owner records a decision (see
+> `9cac0d4`, updated for the v0.10.0 release, plus compatibility tests that would enforce it. Until the owner records a decision (see
 > [Owner questions](#owner-questions)), the schema docs and the code stay free to change.
 
 > **Archived sibling context:** `ounce-hb` and `ounce-runtime` are archived. References below describe the roles those
@@ -62,7 +62,7 @@ the listed types, and each listed type occurs in at least one of 18 representati
 | `audio_hash` | string `fnv1a64:<16 hex>` or null | v0.10.0 (#478) |
 | `guest_exit_status` | number or null (`run-elf` clean exit only) | v0.10.0 (#473) |
 
-v0.9.0 (`4b63f7a`) had 14 keys; nine additional fields shipped in v0.10.0 (`f94db69`) and two (`fault_symbol`, `backtrace`) were added afterwards on `main`. Shipping those fields does **not** freeze this proposed v1.0 contract. Changes to published fields should be deliberate, documented and tested; see the owner decisions below. `tier` is `interpreter`, `tier3`, `tier4` or `nce`
+v0.9.0 (`d3380a0`) had 14 keys; nine additional fields shipped in v0.10.0 (`ae13734`) and two (`fault_symbol`, `backtrace`) were added afterwards on `main`. Shipping those fields does **not** freeze this proposed v1.0 contract. Changes to published fields should be deliberate, documented and tested; see the owner decisions below. `tier` is `interpreter`, `tier3`, `tier4` or `nce`
 (`CpuTier::report_label`); only `interpreter` and `tier3` are exercised by the tests, because `tier4` and `nce` need
 cargo features. Details pinned beyond the key set (`run_v1_stop_details_follow_the_stop`): a fault's `fault_addr`
 or `opcode`, `break_result` read from `info1` when `info2` is 4 (else null), `guest_exit_status` 42 with `exit_code` 0

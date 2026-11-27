@@ -4,7 +4,7 @@
 
 
 Status: **approved 2026-10-26** (recommended options: Cranelift, memory plan A then B, `native-jit` + `--cpu=`, workspace). Steps 1 and 2 done (section 12).
-Date: 2026-10-26. Base: `main` @ 4ecacae (v0.3.1, 25 stages `0xEEE`, `#![forbid(unsafe_code)]` in `src/main.rs`).
+Date: 2026-10-26. Base: `main` @ b7f9b78 (v0.3.1, 25 stages `0xEEE`, `#![forbid(unsafe_code)]` in `src/main.rs`).
 
 ## 1. Goal and scope
 

@@ -9,7 +9,7 @@ of Ounce-Core.
 - Harness (MIT, this repo): `lz4_cases.c` (shared cases), `main_nx.c` (NRO entry), `host/host_main.c` (host reference).
 - Cases: six round-trips (empty, 1 byte, text, zeros, low-entropy, mixed up to 65000 bytes) with compressed-size and FNV-1a hash of the compressed bytes; compress into an 8-byte buffer (expect 0); decompress into a 100-byte buffer (expect negative); four truncations and four bit-flips of a compressed stream (expect no crash, bounded return codes).
 
-## Result (2026-11-08, macOS arm64, Ounce-Core `a4ea10b`, clean `origin/main` build with `--features "nce native-jit"`)
+## Result (2026-11-08, macOS arm64, Ounce-Core `57695aa`, clean `origin/main` build with `--features "nce native-jit"`)
 | Engine | Command flag | Output vs host reference |
 |---|---|---|
 | Tier-3 | `--cpu=tier3` | byte-identical |

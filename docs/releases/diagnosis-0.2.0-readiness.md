@@ -22,7 +22,7 @@ Qualification completed on 2026-11-08:
 - Release archive contents match SOURCE.json and the selected source revision.
 - Draft assets were downloaded and matched SHA256SUMS; both copied-archive diagnoses passed before publication. Published assets match the same bytes, and GitHub's automatic source archive matches the exact 30-file standalone tree.
 
-[Toolkit 0.2.0 is published](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0) under `diagnosis-v0.2.0`, outside the runtime's `v*` publishing trigger. The tag points at parentless standalone commit `03873727e785c6c5fcd85ec6919124a0868df8f1`, built from `dfc951fe701a6f54b3714ab48ae2aa304bc5a3ad`. The runtime `v0.5.0` remains Latest and main remains `9e813b984930f6280b1a23ac2d3a8ed9d9f5d2e7`. [Publication proof](diagnosis-0.2.0-proof.json) retains asset identities and checks.
+[Toolkit 0.2.0 is published](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0) under `diagnosis-v0.2.0`, outside the runtime's `v*` publishing trigger. The tag points at parentless standalone commit `03873727e785c6c5fcd85ec6919124a0868df8f1`, built from `ed6e5e34f719c2eed3326728403463579cc920dd`. The runtime `v0.5.0` remains Latest and main remains `c3787a6d71593f22143d7590021a2cae7e89b80e`. [Publication proof](diagnosis-0.2.0-proof.json) retains asset identities and checks.
 
 If an asset hash or either diagnosis fails, keep the release in draft and repair
 before publication. If a published toolkit issue is found, document it and issue

@@ -5,7 +5,7 @@
 ### Issue #391 (`Nightly fuzz mismatch (seed 20261111)`)
 
 The [#391 nightly artifact](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/43009804952)
-from commit `c47fa1468e36316b61a5aff2d54029d98799f90d` reported **zero hardware
+from commit `8be4448ac1f68013a422298bac99c5c0b6c6a033` reported **zero hardware
 value mismatches** on both Tier-3 and Tier-4 (`339,720` implemented cases each).
 Its failure was a segmentation fault in the preceding `--engine-vs-engine` run
 (`--seed 20261111 --count 1000000`), triggered by `u64::MAX` (`0xffff_ffff_ffff_ffff`)
@@ -27,7 +27,7 @@ register inputs colliding with empty sentinel tags in Tier-4:
 ### Issue #362 (`Tier-4 on x86_64 returns host negative default NaN for scalar FADD/FSUB/FMUL/FDIV/FNMUL`)
 
 [#362](https://github.com/hffgzktbcc-blip/ounce-core/issues/362) was fixed in `main`
-by `de2b909db935240198c7b72cf39105b7c5a887c8`: non-AArch64 scalar Cranelift
+by `0dcbe01a3b3a591ea2b5170dec8f98cc198ddde7`: non-AArch64 scalar Cranelift
 arithmetic passes through `arm_nan`. It chooses signaling NaNs (quieted) before
 quiet NaNs (`a` before `b`), preserves operand payload/sign, and replaces newly
 generated host NaNs with Arm's positive default NaN (`0x7fc0_0000` /

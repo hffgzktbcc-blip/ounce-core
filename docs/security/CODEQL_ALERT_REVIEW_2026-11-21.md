@@ -2,7 +2,7 @@
 
 ## Decision
 
-The ten open `rust/cleartext-logging` alerts on commit `44994c2` are false
+The ten open `rust/cleartext-logging` alerts on commit `4bbef07` are false
 positives. They may be dismissed with the reason `false positive` and the
 alert-specific evidence below.
 
@@ -37,5 +37,5 @@ account payload. The reviewed sinks do not print the account response buffers.
 - Dependabot and secret scanning had zero open alerts at review time.
 
 The review used the CodeQL alert API's source-to-sink messages plus the exact
-sink locations on `44994c2`; it does not infer that a green scan proves the
+sink locations on `4bbef07`; it does not infer that a green scan proves the
 runtime sandbox is secure.

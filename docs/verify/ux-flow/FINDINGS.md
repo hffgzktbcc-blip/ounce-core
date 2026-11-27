@@ -1,6 +1,6 @@
 # UX flow findings: install, open, see a result, diagnose a failure, report it
 
-Date: 2026-11-11. Base: `origin/main` at c47fa14. Host: macOS 26 on Apple Silicon.
+Date: 2026-11-11. Base: `origin/main` at 8be4448. Host: macOS 26 on Apple Silicon.
 Related open work: PR #389 (`hffgzktbcc-blip/diagnose-real-user`) fixes loader and fault message detail, ELF guidance
 and saved-report decoding. This change does not touch those lines; the findings below are the ones #389 leaves open.
 

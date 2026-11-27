@@ -27,7 +27,7 @@ outside the pinned checkout. The guide may be viewed separately from that checko
 ```bash
 set -euo pipefail
 export REPRO_OUT="$(mktemp -d "$PWD/romfs-repro.XXXXXX")"
-export REPRO_CORE=4dba991f323d93c7702d09a4a79eae4918aa0fed
+export REPRO_CORE=0ba4ad907a49589a72b1531668cdb10c8f1db98e
 export REPRO_IMAGE=devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
 mkdir -p "$REPRO_OUT/evidence" "$REPRO_OUT/builds/original"
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git "$REPRO_OUT/core"
