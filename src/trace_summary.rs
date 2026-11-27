@@ -809,6 +809,10 @@ fn cli(args: &[String]) -> Result<i32, String> {
             }
             "--json" => json_out = Some(it.next().ok_or(USAGE)?.clone()),
             "--elf" => elf = Some(it.next().ok_or(USAGE)?.clone()),
+            "--help" | "-h" => {
+                println!("{USAGE}");
+                return Ok(0);
+            }
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}\n{USAGE}")),
             _ => files.push(arg.as_str()),
         }

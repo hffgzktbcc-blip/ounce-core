@@ -446,6 +446,8 @@ impl Output for HostOutput {
     }
 }
 
+const RUN_ELF_USAGE: &str = "usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [-- args...]";
+
 /// CLI entry: `args` are everything after `run-elf`. Returns the process exit status.
 pub fn cli(args: &[String]) -> i32 {
     let mut opts = Options {
@@ -478,6 +480,9 @@ pub fn cli(args: &[String]) -> i32 {
                     return 2;
                 }
             }
+        } else if a == "--help" || a == "-h" {
+            println!("{RUN_ELF_USAGE}");
+            return 0;
         } else if a == "--deterministic" {
             opts.deterministic = true;
         } else if a == "--trace-syscalls" {
@@ -519,9 +524,7 @@ pub fn cli(args: &[String]) -> i32 {
         i += 1;
     }
     let Some(path) = path else {
-        eprintln!(
-            "usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [-- args...]"
-        );
+        eprintln!("{RUN_ELF_USAGE}");
         return 2;
     };
     let report = match std::fs::read(path) {
