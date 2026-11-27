@@ -46,6 +46,7 @@ pub const HWCAP_CRC32: u64 = 1 << 7;
 pub const HWCAP_ATOMICS: u64 = 1 << 8;
 pub const HWCAP_FPHP: u64 = 1 << 9;
 pub const HWCAP_ASIMDHP: u64 = 1 << 10;
+pub const HWCAP_ASIMDRDM: u64 = 1 << 12;
 pub const HWCAP_SHA3: u64 = 1 << 17;
 pub const HWCAP_SHA512: u64 = 1 << 21;
 pub const HWCAP_VALUE: u64 = HWCAP_FP
@@ -58,6 +59,7 @@ pub const HWCAP_VALUE: u64 = HWCAP_FP
     | HWCAP_ATOMICS
     | HWCAP_FPHP
     | HWCAP_ASIMDHP
+    | HWCAP_ASIMDRDM
     | HWCAP_SHA3
     | HWCAP_SHA512;
 

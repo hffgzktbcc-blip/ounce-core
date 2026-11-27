@@ -1542,6 +1542,8 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b0100, true) => SimdElemOp::Op3(SimdOp3::Mls),
             (0b1100, false) => SimdElemOp::Op3(SimdOp3::Sqdmulh),
             (0b1101, false) => SimdElemOp::Op3(SimdOp3::Sqrdmulh),
+            (0b1101, true) => SimdElemOp::Op3(SimdOp3::Sqrdmlah),
+            (0b1111, true) => SimdElemOp::Op3(SimdOp3::Sqrdmlsh),
             (0b1010, _) => SimdElemOp::Long(SimdLongOp::Mull, !u),
             (0b0010, _) => SimdElemOp::Long(SimdLongOp::Mlal, !u),
             (0b0110, _) => SimdElemOp::Long(SimdLongOp::Mlsl, !u),
@@ -1575,20 +1577,23 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     }
 
     // 26a'''. AdvSIMD scalar x indexed element, integer: 01 U 11111 size L M Rm opcode H 0 Rn Rd
-    //         SQDMULH, SQRDMULH, SQDMULL, SQDMLAL, SQDMLSL (size 1 or 2)
-    if (raw & 0xDF00_0400) == 0x5F00_0000 && !u && (size == 1 || size == 2) {
+    //         SQDMULH, SQRDMULH, SQDMULL, SQDMLAL, SQDMLSL (size 1 or 2); U = 1: SQRDMLAH 1101, SQRDMLSH 1111
+    let rdm = matches!((raw >> 12) & 0xF, 0b1101 | 0b1111);
+    if (raw & 0xDF00_0400) == 0x5F00_0000 && (!u || rdm) && (size == 1 || size == 2) {
         let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
         let (rm, index) = if size == 1 {
             (((raw >> 16) & 0xF) as u8, ((h << 2) | (l << 1) | m) as u8)
         } else {
             ((((m << 4) | ((raw >> 16) & 0xF)) as u8), ((h << 1) | l) as u8)
         };
-        let op = match (raw >> 12) & 0xF {
-            0b1100 => SimdElemOp::Op3(SimdOp3::Sqdmulh),
-            0b1101 => SimdElemOp::Op3(SimdOp3::Sqrdmulh),
-            0b1011 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmull),
-            0b0011 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlal),
-            0b0111 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlsl),
+        let op = match ((raw >> 12) & 0xF, u) {
+            (0b1101, true) => SimdElemOp::Op3(SimdOp3::Sqrdmlah),
+            (0b1111, true) => SimdElemOp::Op3(SimdOp3::Sqrdmlsh),
+            (0b1100, false) => SimdElemOp::Op3(SimdOp3::Sqdmulh),
+            (0b1101, false) => SimdElemOp::Op3(SimdOp3::Sqrdmulh),
+            (0b1011, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmull),
+            (0b0011, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlal),
+            (0b0111, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlsl),
             _ => return None,
         };
         return Some(Instruction::SimdByElement {
@@ -1622,6 +1627,21 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
 
     // 26a4b. SQRDMLAH/SQRDMLSH (vector, three-same): 0 Q 1 01110 size 0 Rm 1 000x 1 Rn Rd.
     //        size 01 (half) or 10 (word). Bit 11 selects SH. Other sizes and opcodes stay undecoded.
+    //        Scalar form: 01 1 11110 size 0 Rm 1 000x 1 Rn Rd (Hd/Sd), the rest of Vd zeroed.
+    if (raw & 0xFF20_F400) == 0x7E00_8400 && (size == 1 || size == 2) {
+        let op = if (raw >> 11) & 1 == 1 {
+            SimdOp3::Sqrdmlsh
+        } else {
+            SimdOp3::Sqrdmlah
+        };
+        return Some(Instruction::SimdScalarThreeSame {
+            rd,
+            rn,
+            rm,
+            op,
+            esize: 8u8 << size,
+        });
+    }
     if (raw & 0xBF20_8400) == 0x2E00_8400 && (size == 1 || size == 2) {
         let op = match (raw >> 11) & 0xF {
             0b0000 => Some(SimdOp3::Sqrdmlah),
