@@ -76,6 +76,14 @@ pub fn file_not_found(path: &str) -> String {
     )
 }
 
+/// True when a subcommand's own arguments ask for its usage: `--help` or `-h` before any `--`.
+/// Words after `--` belong to the guest program, so `run-elf prog -- --help` still runs `prog`.
+pub fn asks_for_help(args: &[String]) -> bool {
+    args.iter()
+        .take_while(|a| *a != "--")
+        .any(|a| a == "--help" || a == "-h")
+}
+
 /// The closest known command, if one is near enough to be a plausible typo.
 pub fn suggest(word: &str) -> Option<&'static str> {
     let word = word.to_ascii_lowercase();
@@ -143,6 +151,15 @@ pub fn next_steps(stop: Stop, program: &str, engine: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn help_flags_before_the_guest_separator_ask_for_usage() {
+        let words = |list: &[&str]| list.iter().map(|w| w.to_string()).collect::<Vec<_>>();
+        assert!(asks_for_help(&words(&["--help"])));
+        assert!(asks_for_help(&words(&["prog.elf", "-h"])));
+        assert!(!asks_for_help(&words(&["prog.elf", "--", "--help"])));
+        assert!(!asks_for_help(&words(&["prog.elf", "--json", "out.json"])));
+    }
 
     #[test]
     fn typos_get_a_suggestion_and_nonsense_does_not() {

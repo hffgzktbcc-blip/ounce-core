@@ -787,6 +787,10 @@ fn load(path: &str) -> Result<Trace, String> {
 
 /// `ounce-core trace-diff`: exit `0` no divergence in the compared steps, `1` divergence, `2` bad input.
 pub fn run_cli(args: &[String]) -> i32 {
+    if crate::cli_flow::asks_for_help(args) {
+        println!("{USAGE}");
+        return 0;
+    }
     match cli(args) {
         Ok(code) => code,
         Err(msg) => {

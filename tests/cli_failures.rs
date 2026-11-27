@@ -943,3 +943,19 @@ fn help_and_info_describe_the_actual_execution_model() {
         "{info}"
     );
 }
+
+#[test]
+fn run_elf_diverge_and_trace_diff_print_usage_on_help() {
+    for (command, flag) in [("run-elf", "--help"), ("diverge", "--help"), ("trace-diff", "-h")] {
+        let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+            .args([command, flag])
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{command} {flag}: {output:?}");
+        assert!(
+            stdout.contains(&format!("usage: ounce-core {command}")),
+            "{command} {flag}: {stdout}"
+        );
+    }
+}

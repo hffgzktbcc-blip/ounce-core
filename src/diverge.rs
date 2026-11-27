@@ -226,6 +226,10 @@ fn write_json_report(path: Option<&Path>, report: &Value) -> Result<(), String> 
 
 /// Returns the process exit code: 0 no disagreement, 1 disagreement found, 2 could not run.
 pub fn run_cli(args: &[String]) -> i32 {
+    if crate::cli_flow::asks_for_help(args) {
+        println!("{USAGE}");
+        return 0;
+    }
     let options = match parse(args) {
         Ok(o) => o,
         Err(e) => {
