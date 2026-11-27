@@ -450,10 +450,6 @@ const RUN_ELF_USAGE: &str = "usage: ounce-core run-elf <static-aarch64-linux-ELF
 
 /// CLI entry: `args` are everything after `run-elf`. Returns the process exit status.
 pub fn cli(args: &[String]) -> i32 {
-    if crate::cli_flow::asks_for_help(args) {
-        println!("{RUN_ELF_USAGE}");
-        return 0;
-    }
     let mut opts = Options {
         tier: CpuTier::from_env(),
         ..Options::default()
@@ -484,6 +480,9 @@ pub fn cli(args: &[String]) -> i32 {
                     return 2;
                 }
             }
+        } else if a == "--help" || a == "-h" {
+            println!("{RUN_ELF_USAGE}");
+            return 0;
         } else if a == "--deterministic" {
             opts.deterministic = true;
         } else if a == "--trace-syscalls" {

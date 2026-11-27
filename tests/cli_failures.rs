@@ -946,16 +946,44 @@ fn help_and_info_describe_the_actual_execution_model() {
 
 #[test]
 fn run_elf_diverge_and_trace_diff_print_usage_on_help() {
-    for (command, flag) in [("run-elf", "--help"), ("diverge", "--help"), ("trace-diff", "-h")] {
+    let help = [
+        ["run-elf", "--help"],
+        ["run-elf", "-h"],
+        ["diverge", "--help"],
+        ["diverge", "-h"],
+        ["trace-diff", "--help"],
+        ["trace-diff", "-h"],
+    ];
+    for args in help {
         let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-            .args([command, flag])
+            .args(args)
             .output()
             .unwrap();
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(output.status.success(), "{command} {flag}: {output:?}");
+        assert!(output.status.success(), "{args:?}: {output:?}");
         assert!(
-            stdout.contains(&format!("usage: ounce-core {command}")),
-            "{command} {flag}: {stdout}"
+            stdout.contains(&format!("usage: ounce-core {}", args[0])),
+            "{args:?}: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn help_after_the_guest_separator_reaches_the_program() {
+    let missing = std::env::temp_dir().join(format!("ounce_help_{}_not_created.elf", std::process::id()));
+    let missing = missing.to_str().unwrap();
+    for args in [
+        ["run-elf", missing, "--", "--help"],
+        ["diverge", missing, "--", "--help"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{args:?}: {output:?}");
+        assert!(
+            !String::from_utf8_lossy(&output.stdout).contains("usage:"),
+            "{args:?}: {output:?}"
         );
     }
 }

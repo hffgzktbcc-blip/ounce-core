@@ -111,7 +111,9 @@ fn parse_engines(list: &str) -> Result<Vec<Engine>, String> {
     Ok(out)
 }
 
-fn parse(args: &[String]) -> Result<Options, String> {
+/// `Ok(None)` means the arguments asked for usage: `--help` before `--`, or `-h` before the program path
+/// (after the path a bare `-h` is a program argument).
+fn parse(args: &[String]) -> Result<Option<Options>, String> {
     let mut program = None;
     let mut budget = DEFAULT_BUDGET;
     let mut json = None;
@@ -131,6 +133,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     .filter(|n| *n > 0)
                     .ok_or("--budget needs a positive number")?
             }
+            "--help" => return Ok(None),
+            "-h" if program.is_none() => return Ok(None),
             "--engine" => engines = parse_engines(it.next().ok_or("--engine needs a value")?)?,
             "--json" => json = Some(PathBuf::from(it.next().ok_or("--json needs a path")?)),
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
@@ -138,13 +142,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
             other => program_args.push(other.to_string()),
         }
     }
-    Ok(Options {
+    Ok(Some(Options {
         program: program.ok_or(USAGE)?,
         budget,
         json,
         engines,
         program_args,
-    })
+    }))
 }
 
 /// Identifies NRO (`NRO0` at offset 0x10) or ELF (`\x7fELF` at offset 0) from header bytes, falling
@@ -226,12 +230,12 @@ fn write_json_report(path: Option<&Path>, report: &Value) -> Result<(), String> 
 
 /// Returns the process exit code: 0 no disagreement, 1 disagreement found, 2 could not run.
 pub fn run_cli(args: &[String]) -> i32 {
-    if crate::cli_flow::asks_for_help(args) {
-        println!("{USAGE}");
-        return 0;
-    }
     let options = match parse(args) {
-        Ok(o) => o,
+        Ok(Some(o)) => o,
+        Ok(None) => {
+            println!("{USAGE}");
+            return 0;
+        }
         Err(e) => {
             eprintln!("diverge: {e}");
             return 2;
@@ -894,28 +898,44 @@ mod tests {
     #[test]
     fn parses_options_and_rejects_bad_ones() {
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        let o = parse(&a(&["x.nro", "--budget", "100", "--json", "r.json"])).unwrap();
+        let o = parse(&a(&["x.nro", "--budget", "100", "--json", "r.json"]))
+            .unwrap()
+            .unwrap();
         assert_eq!((o.budget, o.json.as_deref()), (100, Some(Path::new("r.json"))));
         assert!(o.program_args.is_empty());
         assert!(parse(&a(&[])).is_err());
+        assert!(parse(&a(&["--help"])).unwrap().is_none());
+        assert!(parse(&a(&["-h", "x.nro"])).unwrap().is_none());
+        assert!(parse(&a(&["x.nro", "--help"])).unwrap().is_none());
+        assert_eq!(parse(&a(&["x.nro", "-h"])).unwrap().unwrap().program_args, ["-h"]);
+        assert_eq!(
+            parse(&a(&["x.nro", "--", "--help"])).unwrap().unwrap().program_args,
+            ["--help"]
+        );
+        assert_eq!(
+            parse(&a(&["x.nro", "--json", "-h"])).unwrap().unwrap().json.as_deref(),
+            Some(Path::new("-h"))
+        );
         assert!(parse(&a(&["x.nro", "--budget", "0"])).is_err());
         assert!(parse(&a(&["x.nro", "--nope"])).is_err());
         assert_eq!(
-            parse(&a(&["x.nro"])).unwrap().engines,
+            parse(&a(&["x.nro"])).unwrap().unwrap().engines,
             [Engine::Interpreter, Engine::Tier3, Engine::Tier4]
         );
         assert_eq!(
-            parse(&a(&["x.nro", "--engine", "tier4,3"])).unwrap().engines,
+            parse(&a(&["x.nro", "--engine", "tier4,3"])).unwrap().unwrap().engines,
             [Engine::Tier4, Engine::Tier3]
         );
         assert!(parse(&a(&["x.nro", "--engine", "tier9"])).is_err());
 
-        let elf = parse(&a(&["prog.elf", "--engine", "interp,tier3", "--", "--flag", "val"])).unwrap();
+        let elf = parse(&a(&["prog.elf", "--engine", "interp,tier3", "--", "--flag", "val"]))
+            .unwrap()
+            .unwrap();
         assert_eq!(elf.program, PathBuf::from("prog.elf"));
         assert_eq!(elf.engines, [Engine::Interpreter, Engine::Tier3]);
         assert_eq!(elf.program_args, ["--flag", "val"]);
 
-        let positional = parse(&a(&["prog.elf", "one", "two"])).unwrap();
+        let positional = parse(&a(&["prog.elf", "one", "two"])).unwrap().unwrap();
         assert_eq!(positional.program_args, ["one", "two"]);
     }
 
@@ -957,6 +977,7 @@ mod tests {
             "one",
             "--cpu=ignored",
         ]))
+        .unwrap()
         .unwrap();
         assert_eq!(
             build_elf_command_args(&opts, Engine::Interpreter),
