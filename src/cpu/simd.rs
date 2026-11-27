@@ -1679,22 +1679,48 @@ pub fn fp_by_element_fpcr(
     n: u128,
     m: u128,
     index: usize,
-    double: bool,
+    esize: u32,
     q: bool,
     fpcr: u32,
 ) -> u128 {
-    let esize = if double { 64 } else { 32 };
+    use super::softfp::{self, BinOp, Env, F16};
     let op3 = match op {
         SimdFpElementOp::Fmul => SimdFpOp3::Fmul,
         SimdFpElementOp::Fmulx => SimdFpOp3::Fmulx,
         SimdFpElementOp::Fmla => SimdFpOp3::Fmla,
         SimdFpElementOp::Fmls => SimdFpOp3::Fmls,
+        SimdFpElementOp::Fmlal => SimdFpOp3::Fmlal,
+        SimdFpElementOp::Fmlsl => SimdFpOp3::Fmlsl,
+        SimdFpElementOp::Fmlal2 => SimdFpOp3::Fmlal2,
+        SimdFpElementOp::Fmlsl2 => SimdFpOp3::Fmlsl2,
     };
-    let mut bcast = 0u128;
-    for i in 0..lanes(esize, q) {
-        set_lane(&mut bcast, esize, i, lane(m, esize, index));
+    // the widening forms take a half-precision element of `m`; every other form an `esize` one
+    let widening = matches!(
+        op3,
+        SimdFpOp3::Fmlal | SimdFpOp3::Fmlsl | SimdFpOp3::Fmlal2 | SimdFpOp3::Fmlsl2
+    );
+    let e = if widening { 16 } else { esize };
+    let elem = lane(m, e, index);
+    if esize == 16 {
+        let env = Env::from_fpcr_f16(fpcr);
+        let mut out = 0u128;
+        for i in 0..lanes(16, q) {
+            let (a, acc) = (lane(n, 16, i), lane(d, 16, i));
+            let r = match op3 {
+                SimdFpOp3::Fmul => softfp::binop(F16, env, BinOp::Mul, a, elem),
+                SimdFpOp3::Fmulx => softfp::binop(F16, env, BinOp::Mulx, a, elem),
+                SimdFpOp3::Fmla => softfp::fma(F16, env, a, elem, acc),
+                _ => softfp::fma(F16, env, F16.neg(a), elem, acc),
+            };
+            set_lane(&mut out, 16, i, r);
+        }
+        return out;
     }
-    fp_three_same_soft(op3, d, n, bcast, double, q, fpcr)
+    let mut bcast = 0u128;
+    for i in 0..lanes(e, true) {
+        set_lane(&mut bcast, e, i, elem);
+    }
+    fp_three_same_soft(op3, d, n, bcast, esize == 64, q, fpcr)
 }
 
 /// `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (4 singles) and scalar pairwise `FMAXP` etc. (2 lanes): `op` is the lane op
@@ -1758,28 +1784,6 @@ pub fn fp_two_misc(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool) -> u1
             out
         }
     }
-}
-
-/// `FMUL/FMLA/FMLS` by element: every lane of `n` times lane `index` of `m` (fused for FMLA/FMLS).
-pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool) -> u128 {
-    let esize = if double { 64 } else { 32 };
-    let op3 = match op {
-        SimdFpElementOp::Fmul => SimdFpOp3::Fmul,
-        SimdFpElementOp::Fmulx => SimdFpOp3::Fmulx,
-        SimdFpElementOp::Fmla => SimdFpOp3::Fmla,
-        SimdFpElementOp::Fmls => SimdFpOp3::Fmls,
-    };
-    let mut out = 0u128;
-    for i in 0..lanes(esize, q) {
-        let (a, b, acc) = (lane(n, esize, i), lane(m, esize, index), lane(d, esize, i));
-        let r = if double {
-            fp64::op3(op3, acc, a, b)
-        } else {
-            fp32::op3(op3, acc as u32, a as u32, b as u32) as u64
-        };
-        set_lane(&mut out, esize, i, r);
-    }
-    out
 }
 
 /// Integer by-element and dot-product forms. `m` is the whole `Vm`; `index` picks the element (`0xFF`: vector `SDOT`/`UDOT`,
@@ -3001,13 +3005,13 @@ mod fuzz_nan_order {
     fn fmul_by_element_propagates_first_operand_nan() {
         let n = v4([0xffff_ffff, 0x7fc0_0001, 0x3f80_0000, 0x7fc0_0001]);
         let m = v4([0x7fff_ffff, 0x7f80_0001, 0x7fff_ffff, 0x7fff_ffff]);
-        let r = fp_by_element(SimdFpElementOp::Fmul, 0, n, m, 0, false, true);
+        let r = fp_by_element_fpcr(SimdFpElementOp::Fmul, 0, n, m, 0, 32, true, 0);
         let lanes: Vec<u32> = (0..4).map(|i| (r >> (32 * i)) as u32).collect();
         // element 0 of m is a quiet NaN: both quiet -> n's; only m a NaN (lane 2) -> m's
         assert_eq!(lanes, [0xffff_ffff, 0x7fc0_0001, 0x7fff_ffff, 0x7fc0_0001]);
         // a signalling NaN in the element beats a quiet NaN in n
         let m = v4([0x7f80_0001, 0, 0, 0]);
-        let r = fp_by_element(SimdFpElementOp::Fmul, 0, n, m, 0, false, true);
+        let r = fp_by_element_fpcr(SimdFpElementOp::Fmul, 0, n, m, 0, 32, true, 0);
         assert_eq!(r as u32, 0x7fc0_0001);
     }
 
@@ -3016,7 +3020,7 @@ mod fuzz_nan_order {
         let d = v4([0x7fc0_0002, 0, 0, 0]);
         let n = v4([0x7fc0_0001, 0x3f80_0000, 0, 0]);
         let m = v4([0x7fc0_0003, 0, 0, 0]);
-        let r = fp_by_element(SimdFpElementOp::Fmla, d, n, m, 0, false, true);
+        let r = fp_by_element_fpcr(SimdFpElementOp::Fmla, d, n, m, 0, 32, true, 0);
         assert_eq!(r as u32, 0x7fc0_0002);
     }
 }
