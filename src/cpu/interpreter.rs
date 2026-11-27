@@ -3923,6 +3923,74 @@ mod tests {
     }
 
     #[test]
+    fn rdm_sqrdmlah_sqrdmlsh_by_element_and_scalar() {
+        // #469: FEAT_RDM by element (vector and scalar) and the scalar three-same-extra form (words from llvm-mc 18).
+        // Expected values follow the Arm pseudocode: sat((acc << esize) +/- 2 * n * m + 2^(esize - 1)) >> esize.
+        let h = |lanes: &[u16]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (16 * i))
+        };
+        let s = |lanes: &[u32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (32 * i))
+        };
+        let words = [
+            0x6F72_D820, // sqrdmlah v0.8h, v1.8h, v2.h[7]
+            0x6FA5_F883, // sqrdmlsh v3.4s, v4.4s, v5.s[3]
+            0x7F58_D0E6, // sqrdmlah h6, h7, v8.h[1]
+            0x7F8B_F149, // sqrdmlsh s9, s10, v11.s[0]
+            0x7E8E_85AC, // sqrdmlah s12, s13, s14
+            0x7E51_8E0F, // sqrdmlsh h15, h16, h17
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs.write_q(0, h(&[0x1000, 0, 0x7000, 5, 0, 0x7FFF, 0x8000, 0]));
+            c.regs
+                .write_q(1, h(&[0x4000, 0x8000, 0x7FFF, 1, 0xC000, 0, 0x2000, 0x1234]));
+            c.regs.write_q(2, 0x4000u128 << 112);
+            c.regs.write_q(3, s(&[0x1000_0000, 0x8000_0000, 0, 1]));
+            c.regs
+                .write_q(4, s(&[0x4000_0000, 0x8000_0000, 0x0001_0000, 0x7FFF_FFFF]));
+            c.regs.write_q(5, 0x8000_0000u128 << 96);
+            c.regs.write_q(6, h(&[0x0100, 0xFFFF]));
+            c.regs.write_q(7, 0x6000);
+            c.regs.write_q(8, h(&[0, 0x6000]));
+            c.regs.write_q(9, u128::MAX << 32);
+            c.regs.write_q(10, 0x8000_0000);
+            c.regs.write_q(11, 0x8000_0000);
+            c.regs.write_q(12, 0x7FFF_FFFF);
+            c.regs.write_q(13, 0x7FFF_FFFF);
+            c.regs.write_q(14, 0x7FFF_FFFF);
+            c.regs.write_q(16, 0x1000);
+            c.regs.write_q(17, 0x2000);
+        });
+        assert_eq!(
+            cpu.regs.read_q(0),
+            h(&[0x3000, 0xC000, 0x7FFF, 6, 0xE000, 0x7FFF, 0x9000, 0x091A])
+        );
+        assert_eq!(
+            cpu.regs.read_q(3),
+            s(&[0x5000_0000, 0x8000_0000, 0x0001_0000, 0x7FFF_FFFF])
+        );
+        assert_eq!(cpu.regs.read_q(6), 0x4900, "scalar by element zeroes the rest of Vd");
+        assert_eq!(
+            cpu.regs.read_q(9),
+            0x8000_0000,
+            "0 - 2 * (-1 * -1) rounds to -1 without saturating"
+        );
+        assert_eq!(cpu.regs.read_q(12), 0x7FFF_FFFF);
+        assert_eq!(cpu.regs.read_q(15), 0xFC00);
+        assert_eq!(
+            cpu.regs.fpsr,
+            super::super::registers::FPSR_QC,
+            "lanes 2 (8H), 1 and 3 (4S) and s12 saturate"
+        );
+    }
+
+    #[test]
     fn scalar_faddp_sums_two_lanes() {
         // faddp d0, v1.2d and faddp s2, v3.2s (found by running Lua as a Linux ELF)
         let (cpu, _) = run(&[0x7E70D820, 0x7E30D862], |c, _| {
