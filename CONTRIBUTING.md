@@ -66,8 +66,14 @@ failure leaves the local checkpoint intact. Sign off commits (`git commit -s`).
 CI always emits the existing required `Test (ubuntu-latest)` and
 `Test (windows-latest)` statuses. They summarize the applicable legal, tooling,
 runtime and feature checks; failed or cancelled applicable checks fail the summary.
-Docs/metadata/Python-only changes avoid Rust rebuilds. Runtime/build/oracle changes
-run the supported platform/feature matrices and canonical corpus. Full release
+Docs/metadata/Python-only changes avoid Rust rebuilds on pull requests and pushes.
+Runtime/build/oracle changes run single-OS smoke slices on pull requests and expand on
+pushes to `main`. Every Monday at 03:00 UTC (`schedule`) and on manual `workflow_dispatch`,
+`ci.yml` runs every job regardless of changed files on Linux x86-64, Linux ARM64, macOS
+ARM64 and Windows, including all 102 paper checks (`paper-checks`, on `ubuntu-24.04-arm`), with
+pass/fail counts in the job summary and a 30-day `paper-checks-logs` artifact.
+`differential.yml` runs all 51 Linux ARM64 programs on its own Monday schedule and on
+`workflow_dispatch`. Full release
 qualification remains separate. See the workflow files for exact triggers.
 Rust changes must build without warnings: the `lint` job runs
 `cargo clippy --locked --workspace --all-targets -- -D warnings` (also with
@@ -103,8 +109,9 @@ wait. Two releases never ship within 24 hours unless the second fixes a correctn
 
 A release ships only when:
 
-1. CI is green on the full platform matrix, including Windows and macOS (pull requests run only part of it,
-   so run `ci.yml` by hand on the release branch);
+1. CI is green on the full platform matrix, including Linux x86-64, Linux ARM64, Windows and macOS (pull requests run only part of it,
+   so run `ci.yml` and `differential.yml` by hand (`workflow_dispatch`) on the release branch: together they run the full
+   platform matrix, all 51 Linux ARM64 programs and all 102 paper checks);
 2. `python3 scripts/refresh_notice_review.py --check` passes, and the notice review has no open items;
 3. the release notes (`docs/releases/vX.Y.Z.md`) use absolute links, because GitHub publishes the file as the
    release page;
