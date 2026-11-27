@@ -1239,8 +1239,8 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
 /// `FPAdd`, so a NaN subtrahend comes back with its sign flipped and its payload unchanged.
 /// `FPSub` does not do that flip (it reports the original NaN), which is why this is not `FPSub`.
 pub fn fcadd(n: u128, m: u128, esize: u32, q: bool, rot90: bool, fpcr: u32) -> u128 {
-    use super::softfp::{self, BinOp, Env, Fmt};
-    let (f, env) = (Fmt::from_esize(esize), Env::from_fpcr(fpcr));
+    use super::softfp::{self, BinOp, Fmt};
+    let (f, env) = (Fmt::from_esize(esize), fp_env(esize, fpcr));
     let neg = |x: u64| x ^ (1u64 << (esize - 1));
     let count = lanes(esize, q);
     let mut out = 0u128;
@@ -1262,6 +1262,45 @@ pub fn fcadd(n: u128, m: u128, esize: u32, q: bool, rot90: bool, fpcr: u32) -> u
         set_lane(&mut out, esize, e, real);
         set_lane(&mut out, esize, e + 1, imag);
         e += 2;
+    }
+    out
+}
+
+/// The FPCR environment for `esize`-bit lanes: FZ16 flushes halves, FZ singles and doubles.
+fn fp_env(esize: u32, fpcr: u32) -> super::softfp::Env {
+    if esize == 16 {
+        super::softfp::Env::from_fpcr_f16(fpcr)
+    } else {
+        super::softfp::Env::from_fpcr(fpcr)
+    }
+}
+
+/// `FCMLA` on complex pairs (real in the even lane, imaginary in the odd one), as the Arm pseudocode: each
+/// result lane is `FPMulAdd(d, n-part, m-part)` with the parts and negations `rot` selects, so NaN priority is
+/// accumulator, then `Vn`, then `Vm`. `index` picks one pair of `m` for every pair (the by-element form).
+#[allow(clippy::too_many_arguments)]
+pub fn fcmla(d: u128, n: u128, m: u128, esize: u32, q: bool, rot: u8, index: Option<usize>, fpcr: u32) -> u128 {
+    use super::softfp::{self, Fmt};
+    let (f, env) = (Fmt::from_esize(esize), fp_env(esize, fpcr));
+    let count = lanes(esize, q);
+    let mut out = 0u128;
+    for e in (0..count).step_by(2) {
+        let (nre, nim) = (lane(n, esize, e), lane(n, esize, e + 1));
+        let p = index.map_or(e, |i| 2 * i);
+        let (mre, mim) = (lane(m, esize, p), lane(m, esize, p + 1));
+        let (e1, e2, e3, e4) = match rot {
+            0 => (mre, nre, mim, nre),
+            1 => (f.neg(mim), nim, mre, nim),
+            2 => (f.neg(mre), nre, f.neg(mim), nre),
+            _ => (mim, nim, f.neg(mre), nim),
+        };
+        set_lane(&mut out, esize, e, softfp::fma(f, env, e2, e1, lane(d, esize, e)));
+        set_lane(
+            &mut out,
+            esize,
+            e + 1,
+            softfp::fma(f, env, e4, e3, lane(d, esize, e + 1)),
+        );
     }
     out
 }

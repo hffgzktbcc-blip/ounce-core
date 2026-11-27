@@ -2384,6 +2384,23 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Fcmla {
+                rd,
+                rn,
+                rm,
+                esize,
+                q,
+                rot,
+                index,
+            } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let index = index.map(usize::from);
+                let r = simd::fcmla(d, n, m, esize as u32, q, rot, index, self.regs.fpcr);
+                self.regs.write_q(rd, r);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::Fcadd {
                 rd,
                 rn,
@@ -3988,6 +4005,75 @@ mod tests {
             super::super::registers::FPSR_QC,
             "lanes 2 (8H), 1 and 3 (4S) and s12 saturate"
         );
+    }
+
+    #[test]
+    fn fcma_fcmla_vector_by_element_and_fcadd_half() {
+        // #469: FEAT_FCMA FCMLA (every rotation, vector and by element) and FCADD on .4H (words from llvm-mc 18).
+        // Pairs are (real, imaginary); rot 0 + rot 90 together are one complex multiply-accumulate.
+        let h = |lanes: &[u16]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (16 * i))
+        };
+        let s = |lanes: &[f32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, x)| v | (x.to_bits() as u128) << (32 * i))
+        };
+        let d = |a: f64, b: f64| a.to_bits() as u128 | (b.to_bits() as u128) << 64;
+        let words = [
+            0x6E82_C420, // fcmla v0.4s, v1.4s, v2.4s, #0
+            0x6E82_CC23, // fcmla v3.4s, v1.4s, v2.4s, #90
+            0x6E82_D424, // fcmla v4.4s, v1.4s, v2.4s, #180
+            0x6EC7_DCC5, // fcmla v5.2d, v6.2d, v7.2d, #270
+            0x6F6A_3928, // fcmla v8.8h, v9.8h, v10.h[3], #90
+            0x6F8C_182B, // fcmla v11.4s, v1.4s, v12.s[1], #0
+            0x2E4A_E52D, // fcadd v13.4h, v9.4h, v10.4h, #90
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs.write_q(1, s(&[1.0, 2.0, 3.0, -1.0])); // 1+2i, 3-i
+            c.regs.write_q(2, s(&[4.0, 5.0, 0.5, 2.0])); // 4+5i, 0.5+2i
+            c.regs.write_q(5, d(1.0, 1.0));
+            c.regs.write_q(6, d(2.0, 3.0));
+            c.regs.write_q(7, d(5.0, 7.0));
+            // v9 = 1+2i, 3+4i, 0+0.5i, 1+1i; v10 = 1+0.5i, 2+1i, -, 2+0.5i (pair 3)
+            c.regs
+                .write_q(9, h(&[0x3C00, 0x4000, 0x4200, 0x4400, 0, 0x3800, 0x3C00, 0x3C00]));
+            c.regs
+                .write_q(10, h(&[0x3C00, 0x3800, 0x4000, 0x3C00, 0x7E00, 0x7E00, 0x4000, 0x3800]));
+            c.regs.write_q(12, s(&[f32::NAN, f32::NAN, 0.5, -1.0]));
+            c.regs.write_q(13, u128::MAX);
+        });
+        assert_eq!(
+            cpu.regs.read_q(0),
+            s(&[4.0, 5.0, 1.5, 6.0]),
+            "re += nre * mre, im += nre * mim"
+        );
+        assert_eq!(
+            cpu.regs.read_q(3),
+            s(&[-10.0, 8.0, 2.0, -0.5]),
+            "re -= nim * mim, im += nim * mre"
+        );
+        assert_eq!(cpu.regs.read_q(4), s(&[-4.0, -5.0, -1.5, -6.0]));
+        assert_eq!(cpu.regs.read_q(5), d(22.0, -14.0), "1 + 3 * 7 and 1 - 3 * 5");
+        assert_eq!(
+            cpu.regs.read_q(8),
+            h(&[0xBC00, 0x4400, 0xC000, 0x4800, 0xB400, 0x3C00, 0xB800, 0x4000])
+        );
+        assert_eq!(
+            cpu.regs.read_q(11),
+            s(&[0.5, -1.0, 1.5, -3.0]),
+            "pair 1 of v12 for every pair"
+        );
+        assert_eq!(
+            cpu.regs.read_q(13),
+            h(&[0x3800, 0x4200, 0x4000, 0x4600]),
+            "FCADD #90: (nre - mim, nim + mre)"
+        );
+        assert_eq!(cpu.regs.fpsr, 0, "exact results raise no flags");
     }
 
     #[test]
