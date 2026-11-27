@@ -738,6 +738,17 @@ pub enum Instruction {
     },
 
     /// `FCADD`: complex add of pairs. `rot90` is rotation `#90` (else `#270`). `esize` is 32 or 64.
+    /// `FCMLA Vd.<T>, Vn.<T>, Vm.<T>, #rot` (FEAT_FCMA) on .4H/.8H/.2S/.4S/.2D, or by element (`index`: the
+    /// complex pair of `Vm` used for every pair). `rot` is 0..=3 for 0, 90, 180 and 270 degrees.
+    Fcmla {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        esize: u8,
+        q: bool,
+        rot: u8,
+        index: Option<u8>,
+    },
     Fcadd {
         rd: u8,
         rn: u8,

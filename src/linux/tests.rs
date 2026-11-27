@@ -1112,8 +1112,8 @@ fn newfstatat_by_path_finds_nothing_but_fstat_of_a_descriptor_is_still_unimpleme
 fn hardware_fast_path_instructions_execute_across_all_tiers() {
     assert_eq!(
         crate::linux::elf::HWCAP_VALUE,
-        0x2217fb,
-        "AT_HWCAP must expose verified bits: FP | ASIMD | AES | PMULL | SHA1 | SHA2 | CRC32 | ATOMICS | FPHP | ASIMDHP | ASIMDRDM | SHA3 | SHA512"
+        0x2257fb,
+        "AT_HWCAP must expose verified bits: FP | ASIMD | AES | PMULL | SHA1 | SHA2 | CRC32 | ATOMICS | FPHP | ASIMDHP | ASIMDRDM | FCMA | SHA3 | SHA512"
     );
 
     // Assembly sequence testing PMULL, CRC32, and SHA3:

@@ -1524,6 +1524,26 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
     }
 
+    // 26a0. FCMLA (by element): 0 Q 1 01111 size L M Rm 0 rot 1 H 0 Rn Rd. size 01: .4H/.8H with pair index H:L
+    //       (.4H only has pairs 0 and 1); size 10: .4S with pair index H (L = 0, Q = 1). Rm is M:Rm.
+    if (raw & 0xBF00_9400) == 0x2F00_1000 {
+        let (h, l) = ((raw >> 11) & 1, (raw >> 21) & 1);
+        let index = match size {
+            1 if q || h == 0 => (h << 1) | l,
+            2 if q && l == 0 => h,
+            _ => return None,
+        };
+        return Some(Instruction::Fcmla {
+            rd,
+            rn,
+            rm: ((raw >> 16) & 0x1F) as u8,
+            esize: 8u8 << size,
+            q,
+            rot: ((raw >> 13) & 3) as u8,
+            index: Some(index as u8),
+        });
+    }
+
     // 26a''. AdvSIMD indexed element, integer: 0 Q U 01111 size L M Rm opcode H 0 Rn Rd
     //        MUL/MLA/MLS/SQDMULH/SQRDMULH, S/UMULL/MLAL/MLSL, SQDMULL/SQDMLAL/SQDMLSL (size 1 or 2), SDOT/UDOT (size 2)
     if (raw & 0x9F00_0400) == 0x0F00_0000 && (size == 1 || size == 2) {
@@ -1608,18 +1628,29 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
-    // 26a4c. FCADD (single/double): 0 Q 1 01110 size 0 Rm 1 11 rot 0 1 Rn Rd.
-    //        size 10 = .2S/.4S, size 11 = .2D and needs Q. Half precision and size 11 with Q = 0 stay undecoded.
+    // 26a4c. FCADD: 0 Q 1 01110 size 0 Rm 1 11 rot 0 1 Rn Rd. size 01 = .4H/.8H, 10 = .2S/.4S, 11 = .2D (needs Q).
+    //        FCMLA: 0 Q 1 01110 size 0 Rm 1 10 rot 1 Rn Rd, the same sizes.
+    if (raw & 0xBF20_E400) == 0x2E00_C400 && size != 0 && (size != 3 || q) {
+        return Some(Instruction::Fcmla {
+            rd,
+            rn,
+            rm,
+            esize: 8u8 << size,
+            q,
+            rot: ((raw >> 11) & 3) as u8,
+            index: None,
+        });
+    }
     if (raw & 0xBF20_EC00) == 0x2E00_E400 {
         let double = size == 3;
-        if size < 2 || (double && !q) {
+        if size == 0 || (double && !q) {
             return None;
         }
         return Some(Instruction::Fcadd {
             rd,
             rn,
             rm,
-            esize: if double { 64 } else { 32 },
+            esize: 8u8 << size,
             q: q || double,
             rot90: (raw >> 12) & 1 == 0,
         });
@@ -3339,8 +3370,17 @@ mod tests {
                 ..
             }
         ));
-        // half precision and double without Q stay undecoded
-        for w in [0x2e42_e420u32, 0x2ec2_e420] {
+        // fcadd v0.4h, v1.4h, v2.4h, #90 (#469); double without Q and size 00 stay undecoded
+        assert!(matches!(
+            decode(0x2e42_e420),
+            Instruction::Fcadd {
+                esize: 16,
+                q: false,
+                rot90: true,
+                ..
+            }
+        ));
+        for w in [0x2ec2_e420u32, 0x2e02_e420] {
             assert!(
                 matches!(decode(w), Instruction::Unimplemented { .. }),
                 "{w:#x} {:?}",
