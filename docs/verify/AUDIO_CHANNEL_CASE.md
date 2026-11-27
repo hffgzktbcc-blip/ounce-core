@@ -34,14 +34,14 @@ OUNCE_REPORT_JSON=/path/to/new-observation.json \
 ```
 
 Use an outer process timeout as well as the runner's 180-second-per-engine limit.
-The scenario above was committed before execution in `0b8b38a`; the expected
+The scenario above was committed before execution in `fcef2c1`; the expected
 seven successful stereo opens, input checkpoint and binary hash were fixed there.
 
 ## Executed result (2026-11-08)
 
 [Before/after dossier](audout-padding/manifest.json): both engines reached all
 five queued frames with the unchanged NRO. Before repair, all seven upper-halfword
-requests returned `0xF601`; after `430ce19`, all seven returned success and stereo.
+requests returned `0xF601`; after `6b00823`, all seven returned success and stereo.
 Both engines agreed on the recorded protocol observations in each run. The trace
 retains the first 64 manager-open attempts with the raw parameter and reply;
 `OUNCE_TRACE_IPC=1` also exposes these fields in the ordinary runtime logs.
@@ -76,7 +76,7 @@ docker run --rm --platform linux/amd64 \
 ```
 
 Check the resulting hash before running the registered Cargo command. Replay the
-failure from `0b8b38a` and the repaired case from `430ce19` in separate worktrees
+failure from `fcef2c1` and the repaired case from `6b00823` in separate worktrees
 and target directories, retaining each JSON/log separately. The artifact is not
 included; source accessibility does not imply binary redistribution permission.
 This dossier distributes only repository-generated protocol observations, hashes

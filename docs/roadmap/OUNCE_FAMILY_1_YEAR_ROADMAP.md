@@ -11,7 +11,7 @@
 | Status | Item |
 | --- | --- |
 | **Done** | Landed 14 Nov 2026: `ounce.run.v1` / `--report-json`; `ounce-hb` `doctor` / `--auto` / `repro`; `setup-ounce`; the Linux ARM64 ELF matrix workflow. |
-| **Done** | Release infrastructure merged: `ounce-core` #442, `ounce-hb` #40, `ounce-runtime` #13. Linux ARM64 ELF matrix passed on core `main` at `6a4ccb8` ([job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/43803024996/job/133087400644)): 28 harnesses / 76 rows. |
+| **Done** | Release infrastructure merged: `ounce-core` #442, `ounce-hb` #40, `ounce-runtime` #13. Linux ARM64 ELF matrix passed on core `main` at `9c22a53` ([job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/43803024996/job/133087400644)): 28 harnesses / 76 rows. |
 | **Done** | The Q1 release tags v0.9.0 / v0.1.0 / v0.6.0 are published (links above). Preserve the candidate notes as historical qualification evidence. |
 
 **How to use this plan:** This page sets the **family's strategic direction**, not a live checklist of completed PRs. The Core-specific [milestone registry](milestones.json) feeds the generated [technical-status table](../DETAILS.md#the-road-ahead); live releases, CI, and issues establish which work actually shipped. The old pre-tag checklist below records acceptance criteria, **not instructions to cut already-published tags again**. The education roadmap (`OUNCE_EDUCATION_ROADMAP.md`) remains a proposal pending an owner scheduling decision.
@@ -54,7 +54,7 @@ Each repository owns its scope, licence obligations, evidence and release readin
    - **Loop-exit controls (`--max-frames <N>` and inline `--press PLUS@60` DONE, #458 merged 17 Nov; `OUNCE_INPUT_SCRIPT=<path>` was not built):** so standard `while (appletMainLoop())` `libnx` apps exit cleanly instead of hitting the 60s timeout.
    - **Q1 `--sdmc` & RomFS support: DONE** (#459 merged 17 Nov: copy-on-write `--sdmc <dir>` overlay, `--sdmc-writeback` for write-through, `romfsInit()` verification). Do not redo.
    - **CLI & Doc parity:** Implement `--timeout <dur>` and `--json` on `ounce-hb run` (matching `HOMEBREW_DEVELOPER_GUIDE.md`), sync `ounce-hb/README.md` with `doctor`, `repro`, and `--auto`, and extend `ounce-hb doctor` to check `DEVKITPRO`/`devkitA64`/`cargo-nx` alongside engine binaries.
-   - **Applet deadlock (`ounce-core` #387): DONE.** Issue closed, fixed by `0b4489b` (cancelled software-keyboard result); PR #459 adds a regression test. Do not redo.
+   - **Applet deadlock (`ounce-core` #387): DONE.** Issue closed, fixed by `a711d7c` (cancelled software-keyboard result); PR #459 adds a regression test. Do not redo.
 
 2. **End-to-End Graphical & Determinism Parity (`ounce.run.v1` / `ounce.repro.v1`):**
    - **Prerequisites before comparing `framebuffer_hash`:**
@@ -113,7 +113,7 @@ Each repository owns its scope, licence obligations, evidence and release readin
    - Feed Q1–Q2 `ounce.repro.v1` bug reports into `ounce-runtime` Tier-3 / Tier-4 / NCE so fast execution matches `ounce-core` on FP/SIMD, NaN, and SVC edge cases.
    - **Strict One-Way Rule:** `ounce.repro.v1` JSON discoveries may inform GPL `ounce-runtime` fixes, **never** the reverse—no code or patterns from `ounce-runtime` may ever flow into MIT `ounce-core` or `ounce-hb`.
    - Track CI performance regressions strictly via deterministic `insns_executed` budgets (keep wall-time tracking advisory on shared runners). **Core side DONE (#479):** `tests/insn-budgets.json`, checked by `scripts/insn_budgets.py` in the Runtime CI job on three hosts; see `docs/INSN_BUDGETS.md`.
-   - **#400–#404 (instruction gaps): ALL CLOSED 16 Nov 2026** (#400 `32e69ac`, #401 #449, #402 #444, #403 #450, #404 #451). Do not restart them.
+   - **#400–#404 (instruction gaps): ALL CLOSED 16 Nov 2026** (#400 `c70d66b`, #401 #449, #402 #444, #403 #450, #404 #451). Do not restart them.
 
 3. **Quarterly Coordinated Releases & Supply-Chain Hardening:**
    - Cut Q2/Q3 releases (`ounce-core` `v0.10.0` → `v0.11.0`, `ounce-hb` `v0.2.0` → `v0.3.0`, `ounce-runtime` `v0.7.0` → `v0.8.0`) with SPDX/SBOM generation, SHA-pinned GitHub Actions / Dependabot across all 3 repos, and `SHA256SUMS`. **`ounce-core` release shipped (v0.10.0, #480, #501):** `release.yml` generates an SPDX 2.3 SBOM per target (`scripts/generate_sbom.py`, also on a manual dry run) and `SHA256SUMS` covers it; every workflow `uses:` is pinned to a commit SHA (the six former exceptions were pinned in #501, and the pending list in `scripts/check_action_pins.py` is empty). The v0.10.0 release job [published the assets](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/44748733654/job/136333803819). The sibling v0.2.0 and v0.7.0 releases are also published; their supply-chain parity should be verified separately.

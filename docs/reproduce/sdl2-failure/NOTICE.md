@@ -16,7 +16,7 @@ cannot authenticate a manifest edited alongside its files. Preserve this checkou
 revision and the original GitHub artifact identities when sharing results.
 
 - Failure: run [41872194259](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259),
-  recorded core `0e5c340885989c1f70bdb11ba9570a06ef1384b8`.
+  recorded core `66973a8cbeadc639cf0a6a4591b3433946f6b8ab`.
 - Passing reference: run [42175855697](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42175855697),
   recorded core `bc46c7616acd5b2a2875194b591931789e83c8b0`.
   The workflow head was `f72a097f2913905dc6e66870301683647f49bdbf`;

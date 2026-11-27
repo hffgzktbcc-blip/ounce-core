@@ -26,7 +26,7 @@ in turn executes the WebAssembly below, so the emulator is exercised by two laye
   hand-checked against the WebAssembly spec on a sample (div_s overflow, trunc of NaN/2^31, nearest ties-to-even, fac(21)
   wrap, primes below 65536 = 6542, Collatz 27 = 111 steps).
 
-## Result (2026-11-08, macOS arm64, Ounce-Core built from `origin/main` `852d9ab` with `--features "nce native-jit"`, `OUNCE_NRO_BUDGET=4000000000`)
+## Result (2026-11-08, macOS arm64, Ounce-Core built from `origin/main` `3fab05a` with `--features "nce native-jit"`, `OUNCE_NRO_BUDGET=4000000000`)
 | Engine | Command flag | `results.txt` vs host reference |
 |---|---|---|
 | Tier-3 | `--cpu=tier3` | byte-identical |

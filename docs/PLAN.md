@@ -69,7 +69,7 @@ Done tasks are one-liners; full evidence is in [docs/history/PLAN-COMPLETED.md](
       Status: blocked
       Blocked by: an actual outside-project execution and result.
       Result: another emulator project runs a versioned suite and reports a result with exact inputs and reference scope.
-      Progress: [version 0.1.0 seed](../conformance/arm64-v0.1.0/README.md) packages the unchanged hardware FMUL trace, hashes, provenance, comparison scope and adapter contract. A runner rejects unsupported, missing/duplicate counts and tampered input. All three local runtime engines pass. PR #270 passed all 21 hosted checks, including each engine on Linux, macOS and Windows, and merged at `2e55a5e`; these remain internal observations.
+      Progress: [version 0.1.0 seed](../conformance/arm64-v0.1.0/README.md) packages the unchanged hardware FMUL trace, hashes, provenance, comparison scope and adapter contract. A runner rejects unsupported, missing/duplicate counts and tampered input. All three local runtime engines pass. PR #270 passed all 21 hosted checks, including each engine on Linux, macOS and Windows, and merged at `26fa86e`; these remain internal observations.
       Update: [version 0.2.0](../conformance/arm64-v0.2.0) (twelve measured cases) is also published (#427).
       Next: obtain an actual outside-project result; expanding the suite is no longer the blocker. Outside adoption remains external acceptance and is not inferred from internal runs.
 

@@ -1,6 +1,6 @@
 # README terminal demo
 
-`cli-demo.gif` records the actual CLI at commit `e1b9bd7`, using only the
+`cli-demo.gif` records the actual CLI at commit `641c429`, using only the
 committed `tests/fixtures/nro/hello/hello.nro` homebrew fixture. The first run
 passes `fixture` as its argument and exits normally; the second deliberately
 limits execution to 100 instructions to show the real diagnosis and next step.

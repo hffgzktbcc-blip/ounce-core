@@ -51,8 +51,8 @@ candidate; warmup executions also passed. Instructions per engine remained
 Exactly one release test build was run for each side, sequentially, using
 `CARGO_BUILD_JOBS=2 cargo test --release --bin ounce-core --no-run --message-format=json`,
 the same Rust toolchain, worktree, target directory and default features. The
-baseline Rust source is `d06eb0127cf93deecb89f895ea8c0598db1e5fc3`; the candidate
-is `96bb32514f7f90014dd8381cf5f2157b7a72adaf`. The only Rust source difference is
+baseline Rust source is `d2eee65c508f0bf7ecf0a7731a5081dc5dd1e2f7`; the candidate
+is `d7b8425ea0012ae2cce9ff7a38ba36372c902df7`. The only Rust source difference is
 `src/mmu/memory.rs`; both sides include explicit interpreter selection. Both
 builds finished before measurement, with no cargo/rustc process left running.
 No CoreMark, full-corpus qualification, or unrelated tests were rerun for this
@@ -138,10 +138,10 @@ The ELF compiler was `uv run --with ziglang python -m ziglang cc -target
 aarch64-linux-musl` (Zig 0.17.1), with the existing verifier's `-O1 -static
 -no-pie` flags and unchanged manifest defines (`ITERATIONS=25`).
 
-- CLI baseline source: `d06eb0127cf93deecb89f895ea8c0598db1e5fc3`.
-- CLI candidate source: `4f8b795` (the only Rust change from that baseline is
+- CLI baseline source: `d2eee65c508f0bf7ecf0a7731a5081dc5dd1e2f7`.
+- CLI candidate source: `25b3696` (the only Rust change from that baseline is
   `src/mmu/memory.rs`). Both CLIs have the new explicit interpreter selection.
-- NRO benchmark baseline source: `c47fa1468e36316b61a5aff2d54029d98799f90d`.
+- NRO benchmark baseline source: `8be4448ac1f68013a422298bac99c5c0b6c6a033`.
   Its candidate has only the same MMU patch applied; these executables were
   preserved before the interpreter-selection infrastructure rebuild. That
   infrastructure is unused by the existing NRO oracle execution paths.

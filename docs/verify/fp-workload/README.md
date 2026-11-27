@@ -45,7 +45,7 @@ Exit status is 1 if any op is `MISMATCH` or `OTHER-FAIL`; `UNSUPPORTED` alone do
 
 ## Results (Apple M3, macOS, Apple clang 21.0.0)
 
-**Before** the scalar change (base 008e3dd): [summary.tsv](result-2026-11-17/summary.tsv). Tier-3 and Tier-4: 40 ops identical, 8 ops
+**Before** the scalar change (base 96d7db0): [summary.tsv](result-2026-11-17/summary.tsv). Tier-3 and Tier-4: 40 ops identical, 8 ops
 UNSUPPORTED (engine stops with exit 71, `Unimplemented instruction`), 0 mismatches. The 8 were scalar `FRECPS`, `FRSQRTS`,
 `FRECPE`, `FRSQRTE` (double: `0x5e61fc02`, `0x5ee1fc02`, `0x5ee1d802`, `0x7ee1d802`; single `FRECPE`/`FRSQRTE`: `0x5ea1d802`,
 `0x7ea1d802`), `FRINT32Z` and `FRINT64X` (`0x1e684002`, `0x1e69c002`).
@@ -58,7 +58,7 @@ rerun. The instruction fuzzer agrees (host vs interpreter, 8 seeds x 400,000 wor
 FRECPE/FRSQRTE 3,200,000 executed, scalar FRECPS/FRSQRTS 3,200,000, scalar FRINT32Z/32X/64Z/64X 1,801,223 (the host
 rejects the other words); 0 value mismatches, 0 flag-only differences, 0 unimplemented.
 
-### All 199 ops and `fjcvtzs_nzcv` (2026-11-19, base 1553f9d)
+### All 199 ops and `fjcvtzs_nzcv` (2026-11-19, base c28a416)
 
 **All 199 ops on Apple M3** ([summary.tsv](result-2026-11-19-apple-m3-199ops/summary.tsv),
 [toolchain.txt](result-2026-11-19-apple-m3-199ops/toolchain.txt),

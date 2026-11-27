@@ -6,7 +6,7 @@ harnesses under higher optimization levels (`-O2` and `-O3 -mcpu=apple_m1`),
 and three newly onboarded high-star C projects (`yyjson`, `stb-truetype`,
 `zstd`).
 
-- **Base revision**: `d52f6d0de98330ae47d61e18e9c6f0921806c7ff`
+- **Base revision**: `1246b39c9a4ceadfe0cc17fcdfb4f549013bf5f3`
 - **Host compiler (`--host-cc cc`)**: `Apple clang version 21.0.0 (clang-2100.4.1.1)`
 - **ELF compiler (`--elf-cc`)**: `clang version 22.1.8` (`uv run --no-project --with ziglang==0.17.1 python3 -m ziglang cc -target aarch64-linux-musl`)
 - **Result summary**: `59` matrix rows executed across `27` harnesses (`0` failures, `0` emulator bugs exposed).

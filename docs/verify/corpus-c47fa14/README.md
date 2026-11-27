@@ -1,7 +1,7 @@
-# Fresh corpus run at c47fa14 (2026-11-11)
+# Fresh corpus run at 8be4448 (2026-11-11)
 
 Maintainer run of `scripts/verify_corpus_run.py --shards 2 --check-readme` on a clean shared clone of
-`main` at `c47fa14`, macOS arm64 host, Docker in a Lima VM. Result: 50/50 programs pass on every engine.
+`main` at `8be4448`, macOS arm64 host, Docker in a Lima VM. Result: 50/50 programs pass on every engine.
 
 - `canonical-corpus.json`: the canonical report (source of `tests/corpus/oracle-results.json`).
 - `oracle-verdicts.json`, `ounce-verify-evidence.json`: per-oracle verdicts and the verifier record.

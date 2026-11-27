@@ -29,7 +29,7 @@ register inputs, then compares every X register, V register, NZCV and FPSR. Host
   The estimate instructions (FRECPE/FRSQRTE) are fully specified and were not excluded.
 - Words the interpreter does not decode (`Unimplemented`) are counted as coverage gaps, not mismatches.
 
-## Results (origin/main b2f54c5 plus the fixes in this branch)
+## Results (origin/main ee81202 plus the fixes in this branch)
 Final state, seeds 1, 2, 3, 11, 12, 20261108, 21, 22, 1,000,000 words each:
 
 | | words |
