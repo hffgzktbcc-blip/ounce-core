@@ -726,8 +726,9 @@ pub enum Instruction {
     },
     /// Scalar half-precision `FMAX/FMIN/FMAXNM/FMINNM Hd, Hn, Hm`.
     FpHalfMinMax { rd: u8, rn: u8, rm: u8, op: FpOp2 },
-    /// Vector `FABS`/`FNEG` on 16-bit lanes (FEAT_FP16): clears or flips each lane's sign bit; `q` picks .8H over .4H.
-    SimdFpAbsNegHalf { rd: u8, rn: u8, neg: bool, q: bool },
+    /// FEAT_FP16 two-register misc on `.4H`/`.8H` with a floating-point result: `FABS`/`FNEG` (sign bit only, no
+    /// flags), `FRINT*`, `FSQRT`, `FRECPE`, `FRSQRTE` and the compares with zero.
+    SimdFpTwoMiscHalf { rd: u8, rn: u8, op: SimdFpOp2, q: bool },
     SimdAcross {
         rd: u8,
         rn: u8,
@@ -1158,6 +1159,8 @@ pub enum SimdFpOp2 {
     /// Reciprocal / reciprocal square root estimate
     Frecpe,
     Frsqrte,
+    /// `FRECPX` (scalar only): reciprocal exponent
+    Frecpx,
 }
 
 /// Widening multiply flavours of AdvSIMD three-different.

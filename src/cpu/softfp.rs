@@ -112,7 +112,11 @@ pub const F64: Fmt = Fmt { ebits: 11, mbits: 52 };
 
 impl Fmt {
     pub fn from_esize(esize: u32) -> Fmt {
-        if esize == 64 { F64 } else { F32 }
+        match esize {
+            16 => F16,
+            64 => F64,
+            _ => F32,
+        }
     }
     fn bias(self) -> i32 {
         (1 << (self.ebits - 1)) - 1
@@ -293,6 +297,23 @@ fn process_nans(f: Fmt, ops: &[u64]) -> Option<u64> {
         return Some(x | f.quiet_bit());
     }
     ops.iter().find(|&&x| f.is_nan(x)).copied()
+}
+
+/// `FRECPX`: the sign, the exponent inverted (a zero or denormal exponent becomes the largest finite one) and a zero
+/// fraction. A NaN is processed as usual (IOC on a signalling NaN, quieted; DN gives the default NaN); FZ flushes a
+/// denormal input (IDC for single/double), which gives the same result.
+pub fn frecpx(f: Fmt, env: Env, a: u64) -> u64 {
+    let a = flush_input(f, env, a);
+    if let Some(nan) = process_nans(f, &[a]) {
+        return nan_result(f, env, nan);
+    }
+    let exp = (a >> f.mbits) & f.max_field();
+    let e = if exp == 0 {
+        f.max_field() - 1
+    } else {
+        !exp & f.max_field()
+    };
+    (a & f.sign_bit()) | e << f.mbits
 }
 
 /// DN turns a NaN result into the default NaN.
@@ -634,15 +655,19 @@ pub fn widen_f16_preserve_snan(env: Env, a: u64) -> u64 {
 /// and `rounded` that value rounded to an integer by the instruction's rounding mode. A NaN or an out-of-range
 /// result is IOC (the result saturates); an in-range result that differs from `exact` is IXC.
 pub fn raise_to_int(f: Fmt, a: u64, exact: f64, rounded: f64, signed: bool, is_64: bool) {
+    raise_to_int_bits(f, a, exact, rounded, signed, if is_64 { 64 } else { 32 });
+}
+
+/// `raise_to_int` for a `bits`-bit (16, 32 or 64) integer result.
+pub fn raise_to_int_bits(f: Fmt, a: u64, exact: f64, rounded: f64, signed: bool, bits: i32) {
     if f.is_nan(a) {
         raise(IOC);
         return;
     }
-    let (lo, hi) = match (signed, is_64) {
-        (true, true) => (-9223372036854775808.0, 9223372036854775808.0),
-        (true, false) => (-2147483648.0, 2147483648.0),
-        (false, true) => (0.0, 18446744073709551616.0),
-        (false, false) => (0.0, 4294967296.0),
+    let (lo, hi) = if signed {
+        (-(2f64.powi(bits - 1)), 2f64.powi(bits - 1))
+    } else {
+        (0.0, 2f64.powi(bits))
     };
     if !(rounded >= lo && rounded < hi) {
         raise(IOC);

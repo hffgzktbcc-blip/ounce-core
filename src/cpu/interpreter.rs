@@ -1667,42 +1667,19 @@ impl Cpu {
             }
 
             Instruction::FpRoundHalf { rd, rn, op } => {
-                // FRINTX/FRINTI (op 6, 7) round with FPCR.RMode; with FPCR.FZ16 a denormal input reads as zero
-                let f = softfp::F16;
-                let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
-                let inexact_flag = op == 6; // FRINTX raises IXC, FRINTI does not
-                let mode = if op >= 6 {
-                    match env.round {
-                        softfp::Round::Nearest => 0,
-                        softfp::Round::Up => 1,
-                        softfp::Round::Down => 2,
-                        softfp::Round::Zero => 3,
-                        softfp::Round::Odd => unreachable!("round-to-odd is not an FPCR mode"),
-                    }
-                } else {
-                    op
+                // op: 0 N, 1 P, 2 M, 3 Z, 4 A, 6 X, 7 I; FRINTX/FRINTI round with FPCR.RMode, FRINTX raises IXC
+                let fpcr = self.regs.fpcr;
+                let rm = match op {
+                    0 => simd::Rm::Ne,
+                    1 => simd::Rm::Up,
+                    2 => simd::Rm::Down,
+                    3 => simd::Rm::Zero,
+                    4 => simd::Rm::Away,
+                    _ => simd::fpcr_rm(fpcr),
                 };
-                let src = softfp::flush_input(f, env, self.regs.read_q(rn) as u64 & 0xFFFF);
-                if f.is_nan(src) {
-                    // FPRoundInt: a NaN operand comes back quieted (the quiet bit of a half is bit 9); DN gives the default
-                    softfp::raise_round_int(f, src, 0.0, 0.0, false);
-                    let nan = if env.dn { f.default_nan() } else { src | 0x200 };
-                    self.regs.write_q(rd, nan as u128);
-                } else {
-                    // a half is exact in f64, and an integral value of a half is again exact as a half
-                    let widen = softfp::Env { fz: false, ..env };
-                    let v = f64::from_bits(softfp::convert(f, softfp::F64, widen, src));
-                    let r = match mode {
-                        1 => v.ceil(),
-                        2 => v.floor(),
-                        3 => v.trunc(),
-                        4 => v.round(),
-                        _ => v.round_ties_even(),
-                    };
-                    softfp::raise_round_int(f, src, v, r, inexact_flag);
-                    let bits = softfp::convert(softfp::F64, f, softfp::Env::DEFAULT, r.to_bits());
-                    self.regs.write_q(rd, bits as u128);
-                }
+                let src = self.regs.read_q(rn) as u64 & 0xFFFF;
+                self.regs
+                    .write_q(rd, simd::fp16_round_int(src, rm, op == 6, fpcr) as u128);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1734,27 +1711,16 @@ impl Cpu {
                     self.regs.write_q(rd, softfp::int_to_fp(f, env, neg, mag, 0) as u128);
                 } else {
                     // half to integer with the rounding mode in rmode (opcodes 4/5 are ties-away)
-                    let src = softfp::flush_input(f, env, self.regs.read_q(rn) as u64 & 0xFFFF);
-                    let widen = softfp::Env { fz: false, ..env };
-                    let v = f64::from_bits(softfp::convert(f, softfp::F64, widen, src));
-                    let rounded = if opcode >= 4 {
-                        v.round()
-                    } else {
-                        match rmode {
-                            0 => v.round_ties_even(),
-                            1 => v.ceil(),
-                            2 => v.floor(),
-                            _ => v.trunc(),
-                        }
+                    let rm = match (opcode >= 4, rmode) {
+                        (true, _) => simd::Rm::Away,
+                        (_, 0) => simd::Rm::Ne,
+                        (_, 1) => simd::Rm::Up,
+                        (_, 2) => simd::Rm::Down,
+                        _ => simd::Rm::Zero,
                     };
                     let signed = opcode == 0 || opcode == 4;
-                    softfp::raise_to_int(f, src, v, rounded, signed, is_64);
-                    let out: u64 = match (signed, is_64) {
-                        (true, true) => rounded as i64 as u64,
-                        (true, false) => rounded as i32 as u32 as u64,
-                        (false, true) => rounded as u64,
-                        (false, false) => rounded as u32 as u64,
-                    };
+                    let src = self.regs.read_q(rn) as u64 & 0xFFFF;
+                    let out = simd::fp16_to_int(src, rm, signed, 0, if is_64 { 64 } else { 32 }, self.regs.fpcr);
                     self.regs.write_x(rd, out);
                 }
                 self.regs.advance_pc();
@@ -1790,18 +1756,9 @@ impl Cpu {
                         .write_q(rd, softfp::int_to_fp(f, env, neg, mag, fbits as u32) as u128);
                 } else {
                     // FCVTZS / FCVTZU: scale, then truncate toward zero with saturation
-                    let src = softfp::flush_input(f, env, self.regs.read_q(rn) as u64 & 0xFFFF);
-                    let widen = softfp::Env { fz: false, ..env };
-                    let v = f64::from_bits(softfp::convert(f, softfp::F64, widen, src));
-                    let scaled = v * 2f64.powi(fbits as i32);
-                    let t = scaled.trunc();
-                    softfp::raise_to_int(f, src, scaled, t, opcode == 0, is_64);
-                    let out: u64 = match (opcode == 0, is_64) {
-                        (true, true) => t as i64 as u64,
-                        (true, false) => t as i32 as u32 as u64,
-                        (false, true) => t as u64,
-                        (false, false) => t as u32 as u64,
-                    };
+                    let src = self.regs.read_q(rn) as u64 & 0xFFFF;
+                    let bits = if is_64 { 64 } else { 32 };
+                    let out = simd::fp16_to_int(src, simd::Rm::Zero, opcode == 0, fbits as u32, bits, self.regs.fpcr);
                     self.regs.write_x(rd, out);
                 }
                 self.regs.advance_pc();
@@ -2962,12 +2919,9 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdFpAbsNegHalf { rd, rn, neg, q } => {
-                // pure sign-bit operations, including on NaNs: no exception flags and no FPCR dependence
-                let sign: u128 = 0x8000_8000_8000_8000_8000_8000_8000_8000;
-                let n = self.regs.read_q(rn);
-                let r = if neg { n ^ sign } else { n & !sign };
-                self.regs.write_q(rd, if q { r } else { r & u64::MAX as u128 });
+            Instruction::SimdFpTwoMiscHalf { rd, rn, op, q } => {
+                let r = simd::fp16_two_misc_fpcr(op, self.regs.read_q(rn), q, self.regs.fpcr);
+                self.regs.write_q(rd, r);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -3068,64 +3022,8 @@ impl Cpu {
 
             Instruction::FpScalarTwoMisc { rd, rn, op, esize } => {
                 if esize == 16 {
-                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
-                    let f = softfp::F16;
                     let a = (self.regs.read_q(rn) & 0xFFFF) as u64;
-                    let r = match op {
-                        SimdFpOp2::Frecpe => {
-                            let a_in = softfp::flush_input(f, env, a);
-                            simd::special_op2_flags(SimdFpOp2::Frecpe, f, a_in, simd::Rm::Ne, env.fz);
-                            let res = simd::fp_recip_estimate(a_in, 16);
-                            let res = if env.dn && f.is_nan(res) {
-                                f.default_nan()
-                            } else if env.fz && f.is_denormal(res) {
-                                res & 0x8000
-                            } else if f.is_inf(res) && !f.is_zero(a_in) && !f.is_inf(a_in) && !f.is_nan(a_in) {
-                                // a tiny input overflows: infinity only when the mode rounds that way, else the largest finite
-                                let neg = res != f.infinity(false);
-                                let to_inf = match env.round {
-                                    softfp::Round::Nearest => true,
-                                    softfp::Round::Up => !neg,
-                                    softfp::Round::Down => neg,
-                                    _ => false,
-                                };
-                                if to_inf { res } else { res - 1 }
-                            } else {
-                                res
-                            };
-                            (res & 0xFFFF) as u128
-                        }
-                        SimdFpOp2::Frsqrte => {
-                            let a_in = softfp::flush_input(f, env, a);
-                            simd::special_op2_flags(SimdFpOp2::Frsqrte, f, a_in, simd::Rm::Ne, env.fz);
-                            let res = simd::fp_rsqrt_estimate(a_in, 16);
-                            let res = if env.dn && f.is_nan(res) { f.default_nan() } else { res };
-                            (res & 0xFFFF) as u128
-                        }
-                        SimdFpOp2::Fcmeq0
-                        | SimdFpOp2::Fcmge0
-                        | SimdFpOp2::Fcmgt0
-                        | SimdFpOp2::Fcmle0
-                        | SimdFpOp2::Fcmlt0 => {
-                            softfp::raise_compare(f, a, 0, op != SimdFpOp2::Fcmeq0);
-                            let a_flushed = softfp::flush_input(f, env, a);
-                            let (n, z, _c, v) = softfp::compare_f16_nzcv(a_flushed, 0);
-                            let pass = if v {
-                                false
-                            } else {
-                                match op {
-                                    SimdFpOp2::Fcmeq0 => z,
-                                    SimdFpOp2::Fcmge0 => !n,
-                                    SimdFpOp2::Fcmgt0 => !n && !z,
-                                    SimdFpOp2::Fcmle0 => n || z,
-                                    SimdFpOp2::Fcmlt0 => n,
-                                    _ => unreachable!(),
-                                }
-                            };
-                            if pass { 0xFFFFu128 } else { 0u128 }
-                        }
-                        _ => unreachable!("unsupported scalar two-misc half op"),
-                    };
+                    let r = (simd::fp16_two_misc_lane(op, a, self.regs.fpcr) & 0xFFFF) as u128;
                     self.regs.write_q(rd, r);
                 } else {
                     let is_double = esize == 64;
@@ -3144,8 +3042,22 @@ impl Cpu {
                 let e = esize as u32;
                 // only lane 0 of the sources is read, so upper lanes cannot set QC
                 let keep = simd::lane_mask(e);
-                if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf | SimdOp2::Fcvtzs | SimdOp2::Fcvtzu) {
-                    // SCVTF/UCVTF round under FPCR.RMode, FCVTZ* flush inputs under FZ (lane 0 only)
+                if matches!(
+                    op,
+                    SimdOp2::Scvtf
+                        | SimdOp2::Ucvtf
+                        | SimdOp2::Fcvtzs
+                        | SimdOp2::Fcvtzu
+                        | SimdOp2::Fcvtns
+                        | SimdOp2::Fcvtnu
+                        | SimdOp2::Fcvtms
+                        | SimdOp2::Fcvtmu
+                        | SimdOp2::Fcvtas
+                        | SimdOp2::Fcvtau
+                        | SimdOp2::Fcvtps
+                        | SimdOp2::Fcvtpu
+                ) {
+                    // SCVTF/UCVTF round under FPCR.RMode, FCVT* flush inputs under FZ (lane 0 only)
                     let r = simd::int_fp_convert_fpcr(op, self.regs.read_q(rn) & keep, e, false, self.regs.fpcr);
                     self.regs.write_q(rd, simd::lane(r, e, 0) as u128);
                     self.regs.advance_pc();
@@ -3925,6 +3837,88 @@ mod tests {
         assert_eq!(
             (cpu.regs.read_q(10), cpu.regs.fpsr),
             (h(&[0, 0xFFFF, 0xFFFF, 0xFFFF]), 1)
+        );
+    }
+
+    #[test]
+    fn fp16_two_misc_conversions_fixed_point_and_frecpx() {
+        // #469: FEAT_FP16 two-register misc (vector and scalar), half fixed-point converts and FRECPX (llvm-mc 18 words)
+        let h = |lanes: &[u16]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (16 * i))
+        };
+        let words = [
+            0x4E79_8A00, // frintn v0.8h, v16.8h
+            0x2E79_8A01, // frinta v1.4h, v16.4h
+            0x0EF9_BA22, // fcvtzs v2.4h, v17.4h
+            0x0E79_DA43, // scvtf v3.4h, v18.4h
+            0x2EF9_FA64, // fsqrt v4.4h, v19.4h
+            0x0EF8_EA85, // fcmlt v5.4h, v20.4h, #0.0
+            0x5EF9_B8E6, // fcvtzs h6, h7
+            0x5F1D_E528, // scvtf h8, h9, #3
+            0x5EF9_F96A, // frecpx h10, h11
+            0x5EA1_F9AC, // frecpx s12, s13
+            0x6F1E_FDEE, // fcvtzu v14.8h, v15.8h, #2
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            // 2.5, -1.5, 0.5, 3.5, -2.5, 0, 7, -0.5
+            c.regs
+                .write_q(16, h(&[0x4100, 0xBE00, 0x3800, 0x4300, 0xC100, 0, 0x4700, 0xB800]));
+            c.regs.write_q(17, h(&[0xC380, 0x78E2, 0x3C00, 0xF8E2])); // -3.75, 40000, 1, -40000
+            c.regs.write_q(18, h(&[0xFFFB, 0x7FFF, 0, 0x0800])); // -5, 32767, 0, 2048
+            c.regs.write_q(19, h(&[0x4400, 0x4080, 0, 0x3C00])); // 4, 2.25, 0, 1
+            c.regs.write_q(20, h(&[0xBC00, 0, 0x3C00, 0x8000])); // -1, 0, 1, -0
+            c.regs.write_q(6, u128::MAX);
+            c.regs.write_q(7, 0xC100); // -2.5
+            c.regs.write_q(9, 12);
+            c.regs.write_q(11, 0x4200); // 3.0
+            c.regs.write_q(13, 3.0f32.to_bits() as u128);
+            c.regs.write_q(15, h(&[0x3F00, 0xBC00, 0x3400, 0x5640])); // 1.75, -1, 0.25, 100
+        });
+        assert_eq!(
+            cpu.regs.read_q(0),
+            h(&[0x4000, 0xC000, 0, 0x4400, 0xC000, 0, 0x4700, 0x8000]),
+            "ties to even"
+        );
+        assert_eq!(
+            cpu.regs.read_q(1),
+            h(&[0x4200, 0xC000, 0x3C00, 0x4400]),
+            "ties away from zero"
+        );
+        assert_eq!(
+            cpu.regs.read_q(2),
+            h(&[0xFFFD, 0x7FFF, 1, 0x8000]),
+            "toward zero, saturating at 16 bits"
+        );
+        assert_eq!(
+            cpu.regs.read_q(3),
+            h(&[0xC500, 0x7800, 0, 0x6800]),
+            "32767 rounds to 32768"
+        );
+        assert_eq!(cpu.regs.read_q(4), h(&[0x4000, 0x3E00, 0, 0x3C00]));
+        assert_eq!(cpu.regs.read_q(5), h(&[0xFFFF, 0, 0, 0]), "-0 is not below zero");
+        assert_eq!(
+            cpu.regs.read_q(6),
+            0xFFFE,
+            "-2 as a 16-bit integer, rest of the register zeroed"
+        );
+        assert_eq!(cpu.regs.read_q(8), 0x3E00, "12 / 2^3");
+        assert_eq!(
+            cpu.regs.read_q(10),
+            0x3C00,
+            "FRECPX: exponent inverted, fraction cleared"
+        );
+        assert_eq!(cpu.regs.read_q(12), 1.0f32.to_bits() as u128);
+        assert_eq!(
+            cpu.regs.read_q(14),
+            h(&[7, 0, 1, 400]),
+            "times 2^2, negative saturates to 0"
+        );
+        assert_eq!(
+            cpu.regs.fpsr, 0x11,
+            "IOC from the saturations, IXC from the inexact conversions"
         );
     }
 

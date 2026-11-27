@@ -1481,6 +1481,19 @@ fn fcvtxn_pair(d: u128, n: u128, q: bool, env: super::softfp::Env) -> u128 {
 /// denormals, FCVTN/FCVTL convert under the mode. FCVTXN always rounds to odd.
 pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, fpcr: u32) -> u128 {
     use super::softfp::{self, Env, F16, F32, F64};
+    if op == SimdFpOp2::Frecpx {
+        let (esize, f) = if double { (64, F64) } else { (32, F32) };
+        let mut out = 0u128;
+        for i in 0..lanes(esize, q) {
+            set_lane(
+                &mut out,
+                esize,
+                i,
+                softfp::frecpx(f, Env::from_fpcr(fpcr), lane(n, esize, i)),
+            );
+        }
+        return out;
+    }
     if fpcr & softfp::FPCR_ARITH_MASK == 0
         && !matches!(
             op,
@@ -1599,6 +1612,11 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
 
 /// Vector `SCVTF`/`UCVTF` (rounded under RMode) and `FCVTZS`/`FCVTZU` (flushed input under FZ) with a non-default FPCR.
 pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32) -> u128 {
+    fixed_convert_fpcr(op, n, esize, q, 0, fpcr)
+}
+
+/// The FPCR-aware lane loop of `int_fp_convert_fpcr` for single/double lanes.
+fn int_fp_convert_wide(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32) -> u128 {
     use super::softfp::{self, Env, Fmt};
     let (f, env) = (Fmt::from_esize(esize), Env::from_fpcr(fpcr));
     let mut out = 0u128;
@@ -1637,7 +1655,30 @@ pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32)
 /// Vector fixed-point `SCVTF`/`UCVTF` (lane / 2^`fbits`, rounded under RMode) and `FCVTZS`/`FCVTZU` (lane * 2^`fbits`,
 /// truncated toward zero, saturating, NaN to 0; input flushed under FZ). Flags as `FixedToFP` / `FPToFixed`.
 pub fn fixed_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fbits: u32, fpcr: u32) -> u128 {
-    use super::softfp::{self, Env, Fmt};
+    use super::softfp::{self, Env, F16, Fmt};
+    if esize == 16 {
+        let env = Env::from_fpcr_f16(fpcr);
+        let mut out = 0u128;
+        for i in 0..lanes(16, q) {
+            let a = lane(n, 16, i);
+            let r = match op {
+                SimdOp2::Scvtf => {
+                    let s = sext(a, 16);
+                    softfp::int_to_fp(F16, env, s < 0, s.unsigned_abs(), fbits)
+                }
+                SimdOp2::Ucvtf => softfp::int_to_fp(F16, env, false, a, fbits),
+                _ => {
+                    let (rm, signed) = fcvt_mode(op);
+                    fp16_to_int(a, rm, signed, fbits, 16, fpcr)
+                }
+            };
+            set_lane(&mut out, 16, i, r & 0xFFFF);
+        }
+        return out;
+    }
+    if fbits == 0 {
+        return int_fp_convert_wide(op, n, esize, q, fpcr);
+    }
     let (f, env) = (Fmt::from_esize(esize), Env::from_fpcr(fpcr));
     let mut out = 0u128;
     for i in 0..lanes(esize, q) {
@@ -1788,6 +1829,124 @@ pub fn fp16_op3_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, fpcr: u32) -> u64 
         }
         _ => minmax_fpcr(op, acc, a, b, 16, fpcr),
     }
+}
+
+/// Half-precision `FCVT*` (`FPToFixed`): the input flushed under FZ16, scaled by `2^fbits`, rounded by `rm` and
+/// saturated to a `bits`-bit (16, 32 or 64) integer; a NaN gives 0. IOC for a NaN or an out-of-range value, else IXC
+/// when inexact.
+pub fn fp16_to_int(a: u64, rm: Rm, signed: bool, fbits: u32, bits: u32, fpcr: u32) -> u64 {
+    use super::softfp::{self, Env, F16, F64};
+    let a = softfp::flush_input(F16, Env::from_fpcr_f16(fpcr), a);
+    // a half (and a half times a power of two) is exact in f64
+    let v = f64::from_bits(softfp::convert(F16, F64, Env::DEFAULT, a & 0xFFFF)) * 2f64.powi(fbits as i32);
+    let r = if rm == Rm::Zero { v.trunc() } else { round_f64(v, rm) };
+    softfp::raise_to_int_bits(F16, a, v, r, signed, bits as i32);
+    // Rust's float-to-int `as` saturates and maps NaN to 0, as FPToFixed does
+    match (signed, bits) {
+        (true, 16) => r as i16 as u16 as u64,
+        (false, 16) => r as u16 as u64,
+        (true, 32) => r as i32 as u32 as u64,
+        (false, 32) => r as u32 as u64,
+        (true, _) => r as i64 as u64,
+        (false, _) => r as u64,
+    }
+}
+
+/// Half-precision `FRINT*` (`FPRoundInt`): the input flushed under FZ16; a NaN is quieted (DN: the default NaN); an
+/// integral half is again exact as a half. `frintx` raises IXC for an inexact result.
+pub fn fp16_round_int(a: u64, rm: Rm, frintx: bool, fpcr: u32) -> u64 {
+    use super::softfp::{self, Env, F16, F64};
+    let env = Env::from_fpcr_f16(fpcr);
+    let a = softfp::flush_input(F16, env, a);
+    if F16.is_nan(a) {
+        softfp::raise_round_int(F16, a, 0.0, 0.0, false);
+        return if env.dn { F16.default_nan() } else { a | 0x200 };
+    }
+    let v = f64::from_bits(softfp::convert(F16, F64, Env::DEFAULT, a));
+    let r = round_f64(v, rm);
+    softfp::raise_round_int(F16, a, v, r, frintx);
+    softfp::convert(F64, F16, Env::DEFAULT, r.to_bits())
+}
+
+/// FPCR.RMode as an `Rm` (FRINTX/FRINTI and SCVTF round with it).
+pub(crate) fn fpcr_rm(fpcr: u32) -> Rm {
+    match (fpcr >> 22) & 3 {
+        0 => Rm::Ne,
+        1 => Rm::Up,
+        2 => Rm::Down,
+        _ => Rm::Zero,
+    }
+}
+
+/// One half-precision two-register-misc lane with a floating-point (or compare mask) result: `FRINT*`, `FSQRT`,
+/// `FRECPE`, `FRSQRTE`, `FRECPX`, the compares with zero, and the sign operations `FABS`/`FNEG` (no flags).
+pub fn fp16_two_misc_lane(op: SimdFpOp2, a: u64, fpcr: u32) -> u64 {
+    use super::softfp::{self, Env, F16};
+    let (f, env) = (F16, Env::from_fpcr_f16(fpcr));
+    match op {
+        SimdFpOp2::Fabs => a & 0x7FFF,
+        SimdFpOp2::Fneg => a ^ 0x8000,
+        SimdFpOp2::Fsqrt => softfp::sqrt(f, env, a),
+        SimdFpOp2::Frecpx => softfp::frecpx(f, env, a),
+        SimdFpOp2::Frintn => fp16_round_int(a, Rm::Ne, false, fpcr),
+        SimdFpOp2::Frintp => fp16_round_int(a, Rm::Up, false, fpcr),
+        SimdFpOp2::Frintm => fp16_round_int(a, Rm::Down, false, fpcr),
+        SimdFpOp2::Frintz => fp16_round_int(a, Rm::Zero, false, fpcr),
+        SimdFpOp2::Frinta => fp16_round_int(a, Rm::Away, false, fpcr),
+        SimdFpOp2::Frintx => fp16_round_int(a, fpcr_rm(fpcr), true, fpcr),
+        SimdFpOp2::Frinti => fp16_round_int(a, fpcr_rm(fpcr), false, fpcr),
+        SimdFpOp2::Frecpe => {
+            let a = softfp::flush_input(f, env, a);
+            special_op2_flags(SimdFpOp2::Frecpe, f, a, Rm::Ne, env.fz);
+            let r = fp_recip_estimate(a, 16);
+            if env.dn && f.is_nan(r) {
+                f.default_nan()
+            } else if env.fz && f.is_denormal(r) {
+                r & 0x8000
+            } else if f.is_inf(r) && !f.is_zero(a) && !f.is_inf(a) && !f.is_nan(a) {
+                // a tiny input overflows: infinity only when the mode rounds that way, else the largest finite
+                let neg = r != f.infinity(false);
+                let to_inf = match env.round {
+                    softfp::Round::Nearest => true,
+                    softfp::Round::Up => !neg,
+                    softfp::Round::Down => neg,
+                    _ => false,
+                };
+                if to_inf { r } else { r - 1 }
+            } else {
+                r
+            }
+        }
+        SimdFpOp2::Frsqrte => {
+            let a = softfp::flush_input(f, env, a);
+            special_op2_flags(SimdFpOp2::Frsqrte, f, a, Rm::Ne, env.fz);
+            let r = fp_rsqrt_estimate(a, 16);
+            if env.dn && f.is_nan(r) { f.default_nan() } else { r }
+        }
+        _ => {
+            // FCMEQ/FCMGE/FCMGT/FCMLE/FCMLT #0
+            softfp::raise_compare(f, a, 0, op != SimdFpOp2::Fcmeq0);
+            let (n, z, _, v) = softfp::compare_f16_nzcv(softfp::flush_input(f, env, a), 0);
+            let pass = !v
+                && match op {
+                    SimdFpOp2::Fcmeq0 => z,
+                    SimdFpOp2::Fcmge0 => !n,
+                    SimdFpOp2::Fcmgt0 => !n && !z,
+                    SimdFpOp2::Fcmle0 => n || z,
+                    _ => n,
+                };
+            if pass { 0xFFFF } else { 0 }
+        }
+    }
+}
+
+/// Half-precision two-register misc on `.4H`/`.8H` with a floating-point result (see `fp16_two_misc_lane`).
+pub fn fp16_two_misc_fpcr(op: SimdFpOp2, n: u128, q: bool, fpcr: u32) -> u128 {
+    let mut out = 0u128;
+    for i in 0..lanes(16, q) {
+        set_lane(&mut out, 16, i, fp16_two_misc_lane(op, lane(n, 16, i), fpcr) & 0xFFFF);
+    }
+    out
 }
 
 /// FP two-register misc. `FCVTN`/`FCVTL` are the double/single forms: `q` picks the upper half

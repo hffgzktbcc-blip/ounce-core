@@ -83,15 +83,12 @@ fn decode_fixed_point_vector_converts() {
     assert_eq!(decoder::decode(0x4f3f_e402), want(Scvtf, 32, 1, true));
     assert_eq!(decoder::decode(0x4f40_e402), want(Scvtf, 64, 64, true));
     assert_eq!(decoder::decode(0x4f7f_e402), want(Scvtf, 64, 1, true));
-    // reserved or not decoded: 64-bit lanes need Q, immh = 0001 is reserved, immh = 001x is half precision
-    for w in [
-        0x0f6c_e402u32,
-        0x0f6c_fc02,
-        0x4f09_e402,
-        0x4f19_e402,
-        0x4f11_e402,
-        0x4f19_fc02,
-    ] {
+    // immh = 001x is half precision (#469): fbits = 32 - immh:immb
+    assert_eq!(decoder::decode(0x4f19_e402), want(Scvtf, 16, 7, true));
+    assert_eq!(decoder::decode(0x4f11_e402), want(Scvtf, 16, 15, true));
+    assert_eq!(decoder::decode(0x4f19_fc02), want(Fcvtzs, 16, 7, true));
+    // reserved: 64-bit lanes need Q, immh = 0001 is reserved
+    for w in [0x0f6c_e402u32, 0x0f6c_fc02, 0x4f09_e402] {
         assert!(
             matches!(decoder::decode(w), Instruction::Unimplemented { .. }),
             "{w:#010x} {:?}",
@@ -318,14 +315,16 @@ fn decode_fixed_point_scalar_converts() {
     assert_eq!(decoder::decode(0x5f3f_e402), want(Scvtf, 32, 1));
     assert_eq!(decoder::decode(0x5f40_e402), want(Scvtf, 64, 64));
     assert_eq!(decoder::decode(0x5f7f_e402), want(Scvtf, 64, 1));
-    // reserved or not decoded: immh = 0001 is reserved, immh = 001x is half precision
-    for w in [0x5f09_e402u32, 0x5f19_e402, 0x5f11_e402, 0x5f19_fc02, 0x7f11_fc02] {
-        assert!(
-            matches!(decoder::decode(w), Instruction::Unimplemented { .. }),
-            "{w:#010x} {:?}",
-            decoder::decode(w)
-        );
-    }
+    // immh = 001x is half precision (#469): Hd, Hn with fbits = 32 - immh:immb
+    assert_eq!(decoder::decode(0x5f19_e402), want(Scvtf, 16, 7));
+    assert_eq!(decoder::decode(0x5f11_e402), want(Scvtf, 16, 15));
+    assert_eq!(decoder::decode(0x5f19_fc02), want(Fcvtzs, 16, 7));
+    assert_eq!(decoder::decode(0x7f11_fc02), want(Fcvtzu, 16, 15));
+    // reserved: immh = 0001
+    assert!(matches!(
+        decoder::decode(0x5f09_e402),
+        Instruction::Unimplemented { .. }
+    ));
     // the neighbouring scalar shifts still decode as shifts (SSHR d2, d0, #3 = 0x5f7d0402)
     assert!(!matches!(
         decoder::decode(0x5f7d_0402),
