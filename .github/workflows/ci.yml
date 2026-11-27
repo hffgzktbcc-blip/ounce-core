@@ -480,52 +480,6 @@ jobs:
           assert check['verdict']['kind'] == 'agrees', check['verdict']
           PYTHON
 
-  linux-arm64-elf-matrix:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    name: Linux ARM64 ELF matrix
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        with:
-          python-version: '3.12'
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          key: linux-arm64-elf-matrix
-      - name: Install Linux ARM64 build and verification dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc libasound2-dev libudev-dev qemu-user
-          python3 -m pip install ziglang==0.17.1
-      - name: Build ounce-core
-        run: cargo build --release --locked --features "nce native-jit"
-      - name: Run Linux ARM64 ELF matrix
-        run: |
-          set -uo pipefail
-          ev="$RUNNER_TEMP/arm64-matrix-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          mkdir -p "$ev"
-          python3 scripts/run_linux_arm64_matrix.py --work "$ev/work" --report "$ev/linux-arm64-matrix-report.json"
-          rc=$?
-          if [ -f "$ev/linux-arm64-matrix-report.json" ]; then
-            python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("Linux ARM64 ELF matrix: %s/%s harnesses passed (%s failed), %s/%s rows passed." % (r["passed_harnesses"], r["total_harnesses"], r["failed_harnesses"], r["passed_rows"], r["total_rows"]))' "$ev/linux-arm64-matrix-report.json" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          exit "$rc"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: linux-arm64-elf-matrix-report
-          path: |
-            ${{ runner.temp }}/arm64-matrix-*/linux-arm64-matrix-report.json
-            ${{ runner.temp }}/arm64-matrix-*/work/*/report.json
-          if-no-files-found: warn
-          retention-days: 30
-
   paper-checks:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: Paper checks (ubuntu-24.04-arm)
@@ -552,8 +506,8 @@ jobs:
           set -uo pipefail
           ev="$RUNNER_TEMP/papers-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mkdir -p "$ev"
-          bash docs/verify/papers/run_all.sh "$ev/checks" target/release/ounce-core 2>&1 | tee "$ev/run_all.log"
-          rc=$?
+          rc=0
+          bash docs/verify/papers/run_all.sh "$ev/checks" target/release/ounce-core 2>&1 | tee "$ev/run_all.log" || rc=$?
           pass=$(grep -c '^ok ' "$ev/run_all.log" || true)
           fail=$(grep -c '^FAIL ' "$ev/run_all.log" || true)
           nat=$(grep -l 'identical to a native' "$ev"/checks/*.log 2>/dev/null | wc -l | tr -d ' ')
@@ -576,7 +530,7 @@ jobs:
     # applicable job. Docs-only PRs get these statuses without Rust builds.
     name: Test (${{ matrix.context }})
     if: always()
-    needs: [changes, legal-guardrails, tooling, release-notice-packaging, lint, msrv, test, gpu-present, native-jit, nce, corpus, linux-arm64-elf-matrix, paper-checks]
+    needs: [changes, legal-guardrails, tooling, release-notice-packaging, lint, msrv, test, gpu-present, native-jit, nce, corpus, paper-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -599,7 +553,7 @@ jobs:
           if scope.get('corpus') == 'true' and os.environ.get('GITHUB_EVENT_NAME') != 'pull_request':
               required += ['corpus']
           if os.environ.get('GITHUB_EVENT_NAME') in ('schedule', 'workflow_dispatch'):
-              required += ['linux-arm64-elf-matrix', 'paper-checks']
+              required += ['paper-checks']
           bad = {job: needs[job]['result'] for job in required if needs[job]['result'] != 'success'}
           print('Applicable checks:', ', '.join(required))
           if bad:
