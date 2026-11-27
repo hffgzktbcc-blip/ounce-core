@@ -2482,20 +2482,20 @@ impl Cpu {
                 rm,
                 index,
                 op,
-                double,
+                esize,
                 q,
                 scalar,
             } => {
                 let (mut d, mut n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let e = esize as u32;
                 if scalar {
                     // a scalar op reads lane 0 only: replicate it so the unread lanes cannot raise exception flags
-                    let e = if double { 64 } else { 32 };
                     n = simd::dup(simd::lane(n, e, 0), e, true);
                     d = simd::dup(simd::lane(d, e, 0), e, true);
                 }
-                let mut res = simd::fp_by_element_fpcr(op, d, n, m, index as usize, double, q, self.regs.fpcr);
+                let mut res = simd::fp_by_element_fpcr(op, d, n, m, index as usize, e, q, self.regs.fpcr);
                 if scalar {
-                    res &= simd::lane_mask(if double { 64 } else { 32 });
+                    res &= simd::lane_mask(e);
                 }
                 self.regs.write_q(rd, res);
                 self.regs.advance_pc();
@@ -3797,6 +3797,85 @@ mod tests {
         assert_eq!(cpu.regs.read_q(2), 1.5f64.to_bits() as u128);
         // v1.s[3] is the high word of 0.5f64 (0x3FE00000 = 1.75f32): 2.0 * 1.75
         assert_eq!(cpu.regs.read_q(3), 3.5f32.to_bits() as u128);
+    }
+
+    #[test]
+    fn fp16_and_fhm_by_element_forms() {
+        // #469: half-precision FMUL/FMLA/FMULX/FMLS and FEAT_FHM FMLAL/FMLSL2 by element (words from llvm-mc 18)
+        let h = |lanes: &[u16]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (16 * i))
+        };
+        let s = |lanes: &[f32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, x)| v | (x.to_bits() as u128) << (32 * i))
+        };
+        let words = [
+            0x4F32_9820, // fmul v0.8h, v1.8h, v2.h[7]
+            0x5F25_1083, // fmla h3, h4, v5.h[2]
+            0x2F1F_90E6, // fmulx v6.4h, v7.4h, v15.h[1]
+            0x4F0A_5128, // fmls v8.8h, v9.8h, v10.h[0]
+            0x4F9D_098B, // fmlal v11.4s, v12.4h, v13.h[5]
+            0x2FBF_C20E, // fmlsl2 v14.2s, v16.2h, v15.h[3]
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            // 1, 2, 3, 4, 0.5, -1, 1.5, 2 times lane 7 (2.0); the other lanes of v2 are NaN
+            c.regs
+                .write_q(1, h(&[0x3C00, 0x4000, 0x4200, 0x4400, 0x3800, 0xBC00, 0x3E00, 0x4000]));
+            c.regs.write_q(2, h(&[0x7E00; 7]) | (0x4000u128 << 112));
+            c.regs
+                .write_q(3, h(&[0x3C00, 0xFFFF, 0xFFFF, 0xFFFF]) | (u128::MAX << 64));
+            c.regs.write_q(4, h(&[0x3E00, 0x7C01, 0x7C01, 0x7C01])); // only lane 0 is read: no IOC from the sNaNs
+            c.regs.write_q(5, h(&[0, 0, 0x4000]));
+            // FMULX: inf * -0 is -2, 0 * -0 is -0, -0 * -0 is +0, 3 * -0 is -0
+            c.regs.write_q(7, h(&[0x7C00, 0x0000, 0x8000, 0x4200]));
+            c.regs.write_q(15, h(&[0, 0x8000, 0, 0x4000]));
+            c.regs.write_q(8, h(&[0x4400; 8]));
+            c.regs.write_q(9, h(&[0x3E00; 8]));
+            c.regs.write_q(10, h(&[0x4000]));
+            c.regs.write_q(11, s(&[1.0; 4]));
+            c.regs.write_q(12, h(&[0x3C00, 0x4000, 0x4200, 0x3800]));
+            c.regs.write_q(13, h(&[0, 0, 0, 0, 0, 0x4000]));
+            c.regs.write_q(14, s(&[10.0, 10.0, -1.0, -1.0]));
+            c.regs.write_q(16, h(&[0x7E00, 0x7E00, 0x3E00, 0x4400]));
+        });
+        assert_eq!(
+            cpu.regs.read_q(0),
+            h(&[0x4000, 0x4400, 0x4600, 0x4800, 0x3C00, 0xC000, 0x4200, 0x4400])
+        );
+        assert_eq!(cpu.regs.read_q(3), 0x4400, "1 + 1.5 * 2, rest of the register zeroed");
+        assert_eq!(
+            cpu.regs.read_q(6),
+            h(&[0xC000, 0x8000, 0x0000, 0x8000]),
+            "4H: upper half zeroed"
+        );
+        assert_eq!(cpu.regs.read_q(8), h(&[0x3C00; 8]), "4 - 1.5 * 2");
+        assert_eq!(
+            cpu.regs.read_q(11),
+            s(&[3.0, 5.0, 7.0, 2.0]),
+            "1 + n * 2 widened to single"
+        );
+        assert_eq!(
+            cpu.regs.read_q(14),
+            s(&[7.0, 2.0]),
+            "10 - upper halves (1.5, 4) * 2; 2S zeroes the top"
+        );
+        assert_eq!(cpu.regs.fpsr, 0, "exact results raise no flags");
+
+        // FZ16 flushes a half-precision denormal input without raising IDC (as qemu -cpu max does); FZ alone keeps it
+        for (fpcr, want) in [(1u32 << 19, 0u16), (1 << 24, 0x0002)] {
+            let (cpu, _) = run(&[0x4F32_9820], |c, _| {
+                c.regs.fpcr = fpcr;
+                c.regs.write_q(1, 0x0001);
+                c.regs.write_q(2, 0x4000u128 << 112);
+            });
+            assert_eq!(cpu.regs.read_q(0), want as u128, "fpcr {fpcr:#x}");
+            assert_eq!(cpu.regs.fpsr, 0, "fpcr {fpcr:#x}");
+        }
     }
 
     #[test]

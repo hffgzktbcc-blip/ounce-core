@@ -878,16 +878,17 @@ pub enum Instruction {
         q: bool,
     },
 
-    /// `FMUL/FMLA/FMLS Vd.<T>, Vn.<T>, Vm.<Ts>[index]`: `double` selects 64-bit lanes, else 32-bit
+    /// `FMUL/FMLA/FMLS/FMULX Vd.<T>, Vn.<T>, Vm.<Ts>[index]` with 16-, 32- or 64-bit lanes (`esize`), and
+    /// `FMLAL/FMLSL(2) Vd.<2S|4S>, Vn.<2H|4H>, Vm.H[index]` (FEAT_FHM, `esize` 32: the accumulator lanes)
     SimdFpByElement {
         rd: u8,
         rn: u8,
         rm: u8,
         index: u8,
         op: SimdFpElementOp,
-        double: bool,
+        esize: u8,
         q: bool,
-        /// scalar form `FMUL Sd/Dd, Sn/Dn, Vm.<Ts>[index]` (also FMLA/FMLS/FMULX): only lane 0 is written
+        /// scalar form `FMUL Hd/Sd/Dd, Hn/Sn/Dn, Vm.<Ts>[index]` (also FMLA/FMLS/FMULX): only lane 0 is written
         scalar: bool,
     },
 
@@ -1080,6 +1081,11 @@ pub enum SimdFpElementOp {
     Fmul,
     Fmla,
     Fmls,
+    /// FEAT_FHM widening multiply-add/sub by a half-precision element (`2`: upper half of `Vn`)
+    Fmlal,
+    Fmlsl,
+    Fmlal2,
+    Fmlsl2,
 }
 
 /// AdvSIMD floating-point three-same operations (single or double lanes).

@@ -1469,42 +1469,56 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
     }
 
-    // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q U 01111 1 sz L M Rm opcode H 0 Rn Rd
-    //       (FMLA 0001, FMLS 0101, FMUL 1001, FMULX U=1 1001); other opcodes (SDOT, ...) fall through.
-    //       Scalar form: 01 U 11111 1 sz L M Rm opcode H 0 Rn Rd (Sd/Dd, Sn/Dn, Vm.S/D[index]), sz 10 or 11 only.
+    // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q U 01111 size L M Rm opcode H 0 Rn Rd
+    //       (FMLA 0001, FMLS 0101, FMUL 1001, FMULX U=1 1001; size 00 half, 10 single, 11 double) and FEAT_FHM
+    //       FMLAL 0000, FMLSL 0100, FMLAL2 U=1 1000, FMLSL2 U=1 1100 (size 10, vector only); other opcodes
+    //       (SDOT, integer, ...) fall through. Scalar form: 01 U 11111 size L M Rm opcode H 0 Rn Rd.
+    //       Half elements index with H:L:M and Rm is V0-V15; single with H:L, double with H (L must be 0).
     for (mask, want, scalar) in [
-        (0x9F80_0400u32, 0x0F80_0000u32, false),
-        (0xDF80_0400, 0x5F80_0000, true),
+        (0x9F00_0400u32, 0x0F00_0000u32, false),
+        (0xDF00_0400, 0x5F00_0000, true),
     ] {
-        if (raw & mask) != want {
+        if (raw & mask) != want || size == 1 {
             continue;
         }
-        let op = match ((raw >> 12) & 0xF, u) {
-            (0b0001, false) => Some(SimdFpElementOp::Fmla),
-            (0b0101, false) => Some(SimdFpElementOp::Fmls),
-            (0b1001, false) => Some(SimdFpElementOp::Fmul),
-            (0b1001, true) => Some(SimdFpElementOp::Fmulx),
+        let op = match ((raw >> 12) & 0xF, u, size) {
+            (0b0001, false, _) => Some(SimdFpElementOp::Fmla),
+            (0b0101, false, _) => Some(SimdFpElementOp::Fmls),
+            (0b1001, false, _) => Some(SimdFpElementOp::Fmul),
+            (0b1001, true, _) => Some(SimdFpElementOp::Fmulx),
+            (0b0000, false, 2) if !scalar => Some(SimdFpElementOp::Fmlal),
+            (0b0100, false, 2) if !scalar => Some(SimdFpElementOp::Fmlsl),
+            (0b1000, true, 2) if !scalar => Some(SimdFpElementOp::Fmlal2),
+            (0b1100, true, 2) if !scalar => Some(SimdFpElementOp::Fmlsl2),
             _ => None,
         };
         if let Some(op) = op {
             let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
-            let rm = ((m << 4) | ((raw >> 16) & 0xF)) as u8;
-            let double = size == 3;
-            if scalar && size < 2 {
-                return None; // half precision scalar by element is FEAT_FP16, not decoded here
-            }
-            if double && (l == 1 || (!q && !scalar)) {
+            let widening = matches!(
+                op,
+                SimdFpElementOp::Fmlal | SimdFpElementOp::Fmlsl | SimdFpElementOp::Fmlal2 | SimdFpElementOp::Fmlsl2
+            );
+            let half_index = size == 0 || widening;
+            let (rm, index) = if half_index {
+                (((raw >> 16) & 0xF) as u8, ((h << 2) | (l << 1) | m) as u8)
+            } else {
+                (
+                    ((m << 4) | ((raw >> 16) & 0xF)) as u8,
+                    if size == 3 { h } else { (h << 1) | l } as u8,
+                )
+            };
+            if size == 3 && (l == 1 || (!q && !scalar)) {
                 return None;
             }
-            let index = if double { h } else { (h << 1) | l } as u8;
+            let esize = if size == 0 { 16 } else { 8 << size };
             return Some(Instruction::SimdFpByElement {
                 rd,
                 rn,
                 rm,
                 index,
                 op,
-                double,
-                q: q || scalar && double,
+                esize,
+                q: q || scalar && size == 3,
                 scalar,
             });
         }
