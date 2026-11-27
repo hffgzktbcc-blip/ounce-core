@@ -1162,6 +1162,9 @@ mod fp16 {
 /// zero (FPCR.FZ for singles and doubles, FPCR.FZ16 for halves), and DN turns any NaN result into the default NaN.
 fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -> u64 {
     let dn = fpcr & (1 << 25) != 0;
+    if esize == 16 && op == SimdFpOp3::Faddp {
+        return fp16_op3_fpcr(op, acc, a, b, fpcr); // scalar FADDP Hd, Vn.2H reduces through here
+    }
     if esize == 16 {
         let (mut a, mut b) = (a as u16, b as u16);
         if fp16::is_snan(a) || fp16::is_snan(b) {
@@ -1739,15 +1742,52 @@ pub fn fp_reduce_fpcr(op: SimdFpOp3, n: u128, esize: u32, count: usize, fpcr: u3
     go(op, n, esize, 0, count, fpcr)
 }
 
-/// Half-precision FMAX/FMIN/FMAXNM/FMINNM (and pairwise) on `.4H` / `.8H`.
-pub fn fp16_three_same_fpcr(op: SimdFpOp3, n: u128, m: u128, q: bool, fpcr: u32) -> u128 {
+/// FEAT_FP16 three-same on `.4H` / `.8H`: every arithmetic, compare and min/max op, pairwise forms reading `n`
+/// then `m` pairs; `d` is the FMLA/FMLS accumulator.
+pub fn fp16_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, q: bool, fpcr: u32) -> u128 {
     let count = lanes(16, q);
     let mut out = 0u128;
     for i in 0..count {
         let (a, b) = fp_operands(op, n, m, 16, count, i);
-        set_lane(&mut out, 16, i, minmax_fpcr(op, 0, a, b, 16, fpcr));
+        set_lane(&mut out, 16, i, fp16_op3_fpcr(op, lane(d, 16, i), a, b, fpcr));
     }
     out
+}
+
+/// One half-precision three-same lane under FPCR (FZ16, DN, RMode). Compares return all ones or zero.
+pub fn fp16_op3_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, fpcr: u32) -> u64 {
+    use super::softfp::{self, BinOp, F16};
+    let env = softfp::Env::from_fpcr_f16(fpcr);
+    match op {
+        SimdFpOp3::Fadd | SimdFpOp3::Faddp => softfp::binop(F16, env, BinOp::Add, a, b),
+        SimdFpOp3::Fsub => softfp::binop(F16, env, BinOp::Sub, a, b),
+        SimdFpOp3::Fmul => softfp::binop(F16, env, BinOp::Mul, a, b),
+        SimdFpOp3::Fmulx => softfp::binop(F16, env, BinOp::Mulx, a, b),
+        SimdFpOp3::Fdiv => softfp::binop(F16, env, BinOp::Div, a, b),
+        SimdFpOp3::Fabd => F16.abs(softfp::binop(F16, env, BinOp::Sub, a, b)),
+        SimdFpOp3::Fmla => softfp::fma(F16, env, a, b, acc),
+        SimdFpOp3::Fmls => softfp::fma(F16, env, F16.neg(a), b, acc),
+        SimdFpOp3::Frecps => softfp::recip_step(F16, env, a, b),
+        SimdFpOp3::Frsqrts => softfp::rsqrt_step(F16, env, a, b),
+        SimdFpOp3::Fcmeq | SimdFpOp3::Fcmge | SimdFpOp3::Fcmgt | SimdFpOp3::Facge | SimdFpOp3::Facgt => {
+            let (a, b) = if matches!(op, SimdFpOp3::Facge | SimdFpOp3::Facgt) {
+                (F16.abs(a), F16.abs(b))
+            } else {
+                (a, b)
+            };
+            softfp::raise_compare(F16, a, b, op != SimdFpOp3::Fcmeq);
+            let (n, z, _, v) =
+                softfp::compare_f16_nzcv(softfp::flush_input(F16, env, a), softfp::flush_input(F16, env, b));
+            let pass = !v
+                && match op {
+                    SimdFpOp3::Fcmeq => z,
+                    SimdFpOp3::Fcmge | SimdFpOp3::Facge => !n,
+                    _ => !n && !z,
+                };
+            if pass { 0xFFFF } else { 0 }
+        }
+        _ => minmax_fpcr(op, acc, a, b, 16, fpcr),
+    }
 }
 
 /// FP two-register misc. `FCVTN`/`FCVTL` are the double/single forms: `q` picks the upper half
@@ -2592,7 +2632,7 @@ mod fp_vector_tests {
     fn half_precision_fmax_fmin_lane_semantics() {
         let n = h8([0x3c00, 0x4000, 0x8000, 0x7e55, 0x0001, 0x8001, 0x7c01, 0xfc00]);
         let m = h8([0x4000, 0x4000, 0x0000, 0x3c00, 0x8001, 0x0001, 0x7e55, 0x7c00]);
-        let run = |op, fpcr| u8h(fp16_three_same_fpcr(op, n, m, true, fpcr));
+        let run = |op, fpcr| u8h(fp16_three_same_fpcr(op, 0, n, m, true, fpcr));
         assert_eq!(
             run(SimdFpOp3::Fmax, 0),
             [0x4000, 0x4000, 0x0000, 0x7e55, 0x0001, 0x0001, 0x7e01, 0x7c00]
@@ -2621,7 +2661,7 @@ mod fp_vector_tests {
         assert_eq!(run(SimdFpOp3::Fmaxnm, DN | FZ16)[3], 0x3c00);
         assert_eq!(run(SimdFpOp3::Fmaxnm, DN | FZ16)[6], 0x7e00);
         // 4H (Q = 0) writes only the low four lanes
-        let r = u8h(fp16_three_same_fpcr(SimdFpOp3::Fmax, n, m, false, 0));
+        let r = u8h(fp16_three_same_fpcr(SimdFpOp3::Fmax, 0, n, m, false, 0));
         assert_eq!(r, [0x4000, 0x4000, 0x0000, 0x7e55, 0, 0, 0, 0]);
     }
 
@@ -2630,24 +2670,24 @@ mod fp_vector_tests {
         let n = h8([0x3c00, 0x4000, 0x4400, 0x4200, 0xbc00, 0x3800, 0x4000, 0x4000]);
         let m = h8([0x3800, 0x3c00, 0x4200, 0x4400, 0xbc00, 0xbc00, 0x0000, 0x8000]);
         assert_eq!(
-            u8h(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, m, true, 0)),
+            u8h(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, 0, n, m, true, 0)),
             [0x4000, 0x4400, 0x3800, 0x4000, 0x3c00, 0x4400, 0xbc00, 0x0000]
         );
         assert_eq!(
-            u8h(fp16_three_same_fpcr(SimdFpOp3::Fminp, n, m, true, 0)),
+            u8h(fp16_three_same_fpcr(SimdFpOp3::Fminp, 0, n, m, true, 0)),
             [0x3c00, 0x4200, 0xbc00, 0x4000, 0x3800, 0x4200, 0xbc00, 0x8000]
         );
         // 4H pairwise: one result pair from n, one from m
-        let r = u8h(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, m, false, 0));
+        let r = u8h(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, 0, n, m, false, 0));
         assert_eq!(r, [0x4000, 0x4400, 0x3c00, 0x4400, 0, 0, 0, 0]);
         // FMAXNMP skips a quiet NaN in the pair, FMAXP does not
         let n = h8([0x7e55, 0x3c00, 0, 0, 0, 0, 0, 0]);
         assert_eq!(
-            lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxnmp, n, 0, true, 0), 16, 0),
+            lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxnmp, 0, n, 0, true, 0), 16, 0),
             0x3c00
         );
         assert_eq!(
-            lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, 0, true, 0), 16, 0),
+            lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, 0, n, 0, true, 0), 16, 0),
             0x7e55
         );
         // reductions: FMAXV/FMINV over 8H and 4H, tree order, signed zeros, NaN, FZ16, DN
