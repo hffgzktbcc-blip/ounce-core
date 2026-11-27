@@ -344,6 +344,45 @@ pub enum Instruction {
     /// destination is zero.
     FpMovGenHalf { rd: u8, rn: u8, to_fp: bool, is_64: bool },
 
+    /// `BFCVT Hd, Sn` (FEAT_BF16): a single rounded to BFloat16 under FPCR, the rest of `Vd` zeroed.
+    Bfcvt { rd: u8, rn: u8 },
+    /// `BFCVTN Vd.4H, Vn.4S` / `BFCVTN2 Vd.8H, Vn.4S` (`q`): four singles rounded to BFloat16 into the lower half
+    /// (upper zeroed) or the upper half (lower kept) of `Vd`.
+    Bfcvtn { rd: u8, rn: u8, q: bool },
+    /// `BFMLALB`/`BFMLALT Vd.4S, Vn.8H, Vm.8H` (or `Vm.H[index]`): the even (`top` false) or odd BFloat16 lanes,
+    /// widened to single, multiplied and fused into the four single accumulators under FPCR.
+    Bfmlal {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        top: bool,
+        index: Option<u8>,
+    },
+
+    /// `BFDOT Vd.2S/4S, Vn.4H/8H, Vm.4H/8H` (or `Vm.2H[index]`, one pair of `Vm` for every lane): each single
+    /// accumulator plus the dot product of a BFloat16 pair, with Arm's `BFDotAdd` rounding.
+    Bfdot {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        q: bool,
+        index: Option<u8>,
+    },
+
+    /// `BFMMLA Vd.4S, Vn.8H, Vm.8H`: the 2x2 single matrix in `Vd` plus the 2x4 BFloat16 matrix in `Vn` times the
+    /// transpose of the one in `Vm`, each element two `BFDotAdd` steps.
+    Bfmmla { rd: u8, rn: u8, rm: u8 },
+
+    /// `SMMLA`/`UMMLA`/`USMMLA Vd.4S, Vn.16B, Vm.16B` (FEAT_I8MM): the 2x2 32-bit matrix in `Vd` plus the 2x8 byte
+    /// matrix in `Vn` times the transpose of the one in `Vm`, wrapping; the flags say which bytes are signed.
+    SimdMmla {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        n_signed: bool,
+        m_signed: bool,
+    },
+
     /// `FRINT{N,P,M,Z,A,X,I} Hd, Hn` (FEAT_FP16); `op` is bits 17..15 of the encoding as for `FpRound`.
     FpRoundHalf { rd: u8, rn: u8, op: u8 },
 
@@ -1085,8 +1124,9 @@ pub enum SimdElemOp {
     Long(SimdLongOp, bool),
     /// Saturating doubling widening multiply
     SatLong(SimdSatLongOp),
-    /// `SDOT` (`true`) / `UDOT` (`false`): four byte products accumulated into each 32-bit lane
-    Dot(bool),
+    /// `SDOT`/`UDOT`/`USDOT`/`SUDOT`: four byte products accumulated into each 32-bit lane; the flags say whether
+    /// the `Vn` and the `Vm` bytes are signed
+    Dot { n_signed: bool, m_signed: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

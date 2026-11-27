@@ -1115,6 +1115,11 @@ fn hardware_fast_path_instructions_execute_across_all_tiers() {
         0x2257fb,
         "AT_HWCAP must expose verified bits: FP | ASIMD | AES | PMULL | SHA1 | SHA2 | CRC32 | ATOMICS | FPHP | ASIMDHP | ASIMDRDM | FCMA | SHA3 | SHA512"
     );
+    assert_eq!(
+        crate::linux::elf::HWCAP2_VALUE,
+        (1 << 13) | (1 << 14),
+        "AT_HWCAP2 must expose I8MM and BF16 (Linux uapi hwcap.h bits 13 and 14)"
+    );
 
     // Assembly sequence testing PMULL, CRC32, and SHA3:
     // pmull v0.8h, v1.8b, v2.8b    (0x0E22E020)
