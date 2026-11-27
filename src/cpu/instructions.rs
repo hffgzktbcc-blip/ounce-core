@@ -634,7 +634,8 @@ pub enum Instruction {
         q: bool,
     },
 
-    /// `SQDMULL{2}`/`SQDMLAL{2}`/`SQDMLSL{2}` (vector): `esize` is the source lane size (16 or 32)
+    /// `SQDMULL{2}`/`SQDMLAL{2}`/`SQDMLSL{2}`: `esize` is the source lane size (16 or 32). `scalar`: the
+    /// `Sd, Hn, Hm` / `Dd, Sn, Sm` form, one widened lane with the rest of `Vd` zeroed.
     SimdSatLong {
         rd: u8,
         rn: u8,
@@ -642,6 +643,7 @@ pub enum Instruction {
         op: SimdSatLongOp,
         esize: u8,
         q: bool,
+        scalar: bool,
     },
 
     /// `SQADD`/`UQADD`/`SQSUB`/`UQSUB` (vector, or scalar when `scalar`): saturating lane add/subtract; sets `FPSR.QC`

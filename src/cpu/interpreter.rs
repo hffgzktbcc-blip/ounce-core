@@ -2894,9 +2894,18 @@ impl Cpu {
                 op,
                 esize,
                 q,
+                scalar,
             } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
-                let (r, sat) = simd::sat_doubling_mul_long(op, d, n, m, esize as u32, q);
+                let e = esize as u32;
+                let (r, sat) = if scalar {
+                    // one lane in, one double-width lane out; the unread lanes cannot saturate
+                    let (keep, wide) = (simd::lane_mask(e), simd::lane_mask(2 * e));
+                    let (r, sat) = simd::sat_doubling_mul_long(op, d & wide, n & keep, m & keep, e, false);
+                    (r & wide, sat)
+                } else {
+                    simd::sat_doubling_mul_long(op, d, n, m, e, q)
+                };
                 if sat {
                     self.regs.fpsr |= super::registers::FPSR_QC;
                 }
@@ -4074,6 +4083,71 @@ mod tests {
             "FCADD #90: (nre - mim, nim + mre)"
         );
         assert_eq!(cpu.regs.fpsr, 0, "exact results raise no flags");
+    }
+
+    #[test]
+    fn scalar_sat_long_fp_compares_fcvt_and_integer_d_forms() {
+        // #469: scalar SQDMULL/SQDMLAL/SQDMLSL, scalar FCM*/FAC* (register), FCVT{N,M,A,P}{S,U} and the integer D
+        // forms CMGE/CMLT #0, NEG and ABS (words from llvm-mc 18)
+        let words = [
+            0x5E62_D020, // sqdmull s0, h1, h2
+            0x5EA5_9083, // sqdmlal d3, s4, s5
+            0x5E62_B026, // sqdmlsl s6, h1, h2
+            0x7E69_E507, // fcmge d7, d8, d9
+            0x7EAC_ED6A, // facgt s10, s11, s12
+            0x5E21_A9CD, // fcvtns s13, s14
+            0x7E61_BA0F, // fcvtmu d15, d16
+            0x5E21_CA51, // fcvtas s17, s18
+            0x5EE1_AA93, // fcvtps d19, d20
+            0x7EE0_8AD5, // cmge d21, d22, #0
+            0x5EE0_AAD7, // cmlt d23, d22, #0
+            0x7EE0_BAD8, // neg d24, d22
+            0x5EE0_BAD9, // abs d25, d22
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs.write_q(0, u128::MAX);
+            c.regs.write_q(1, 0xFFFF_8000); // h1 = -32768 (the upper lanes are not read)
+            c.regs.write_q(2, 0x8000);
+            c.regs.write_q(3, 10);
+            c.regs.write_q(4, 3);
+            c.regs.write_q(5, (-4i32) as u32 as u128);
+            c.regs.write_q(6, u128::MAX << 32);
+            c.regs.write_q(8, 2.0f64.to_bits() as u128);
+            c.regs.write_q(9, 2.0f64.to_bits() as u128);
+            c.regs.write_q(11, (-3.0f32).to_bits() as u128);
+            c.regs.write_q(12, 2.0f32.to_bits() as u128);
+            c.regs.write_q(14, 2.5f32.to_bits() as u128);
+            c.regs.write_q(16, 3.7f64.to_bits() as u128);
+            c.regs.write_q(18, (-2.5f32).to_bits() as u128);
+            c.regs.write_q(20, (-1.5f64).to_bits() as u128);
+            c.regs.write_q(22, (-5i64) as u64 as u128);
+        });
+        assert_eq!(
+            cpu.regs.read_q(0),
+            0x7FFF_FFFF,
+            "2 * -32768 * -32768 saturates; rest of Vd zeroed"
+        );
+        assert_eq!(cpu.regs.read_q(3), (-14i64) as u64 as u128, "10 + 2 * 3 * -4");
+        assert_eq!(
+            cpu.regs.read_q(6),
+            0x8000_0001,
+            "0 - saturated product; only the low 32 bits are the accumulator"
+        );
+        assert_eq!(cpu.regs.read_q(7), u64::MAX as u128);
+        assert_eq!(cpu.regs.read_q(10), u32::MAX as u128, "|-3| > |2|");
+        assert_eq!(cpu.regs.read_q(13), 2, "2.5 to nearest even");
+        assert_eq!(cpu.regs.read_q(15), 3, "3.7 toward minus infinity");
+        assert_eq!(cpu.regs.read_q(17), (-3i32) as u32 as u128, "-2.5 away from zero");
+        assert_eq!(cpu.regs.read_q(19), u64::MAX as u128, "-1.5 toward plus infinity is -1");
+        assert_eq!(cpu.regs.read_q(21), 0);
+        assert_eq!(cpu.regs.read_q(23), u64::MAX as u128);
+        assert_eq!(cpu.regs.read_q(24), 5);
+        assert_eq!(cpu.regs.read_q(25), 5);
+        assert_eq!(
+            cpu.regs.fpsr,
+            super::super::registers::FPSR_QC | 0x10,
+            "QC from the saturations, IXC from FCVT*"
+        );
     }
 
     #[test]
