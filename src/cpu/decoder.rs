@@ -1840,9 +1840,10 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
     }
 
-    // FRECPE / FRSQRTE / compare-to-zero (scalar): 01 U 11110 1 sz 10000 opcode 10 Rn Rd
+    // FRECPE / FRSQRTE / FRECPX / compare-to-zero (scalar): 01 U 11110 1 sz 10000 opcode 10 Rn Rd
     if (raw & 0xDFBE_0C00) == 0x5EA0_0800 {
         let op = match ((raw >> 12) & 0x1F, u) {
+            (0b11111, false) => Some(SimdFpOp2::Frecpx),
             (0b11101, false) => Some(SimdFpOp2::Frecpe),
             (0b11101, true) => Some(SimdFpOp2::Frsqrte),
             (0b01101, false) => Some(SimdFpOp2::Fcmeq0),
@@ -1862,21 +1863,39 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
     }
 
-    // AdvSIMD scalar two-register miscellaneous FP16: 0 1 U 11110 1 11 11100 opcode 10 Rn Rd
-    if (raw & 0xDFFE_0C00) == 0x5EF8_0800 {
-        let op = match ((raw >> 12) & 0x1F, u) {
-            (0b11101, false) => Some(SimdFpOp2::Frecpe),
-            (0b11101, true) => Some(SimdFpOp2::Frsqrte),
-            (0b01101, false) => Some(SimdFpOp2::Fcmeq0),
-            (0b01101, true) => Some(SimdFpOp2::Fcmle0),
-            (0b01110, false) => Some(SimdFpOp2::Fcmlt0),
-            (0b01100, true) => Some(SimdFpOp2::Fcmge0),
-            (0b01100, false) => Some(SimdFpOp2::Fcmgt0),
+    // AdvSIMD scalar two-register miscellaneous FP16: 0 1 U 11110 a 1111 00 opcode 10 Rn Rd
+    if (raw & 0xDF7E_0C00) == 0x5E78_0800 {
+        let a = (raw >> 23) & 1 == 1;
+        let fp = match ((raw >> 12) & 0x1F, u, a) {
+            (0b11101, false, true) => Some(SimdFpOp2::Frecpe),
+            (0b11111, false, true) => Some(SimdFpOp2::Frecpx),
+            (0b11101, true, true) => Some(SimdFpOp2::Frsqrte),
+            (0b01101, false, true) => Some(SimdFpOp2::Fcmeq0),
+            (0b01101, true, true) => Some(SimdFpOp2::Fcmle0),
+            (0b01110, false, true) => Some(SimdFpOp2::Fcmlt0),
+            (0b01100, true, true) => Some(SimdFpOp2::Fcmge0),
+            (0b01100, false, true) => Some(SimdFpOp2::Fcmgt0),
             _ => None,
         };
-        if let Some(op) = op {
+        if let Some(op) = fp {
             return Some(Instruction::FpScalarTwoMisc { rd, rn, op, esize: 16 });
         }
+        let op = match ((raw >> 12) & 0x1F, u, a) {
+            (0b11010, false, false) => SimdOp2::Fcvtns,
+            (0b11011, false, false) => SimdOp2::Fcvtms,
+            (0b11100, false, false) => SimdOp2::Fcvtas,
+            (0b11101, false, false) => SimdOp2::Scvtf,
+            (0b11010, false, true) => SimdOp2::Fcvtps,
+            (0b11011, false, true) => SimdOp2::Fcvtzs,
+            (0b11010, true, false) => SimdOp2::Fcvtnu,
+            (0b11011, true, false) => SimdOp2::Fcvtmu,
+            (0b11100, true, false) => SimdOp2::Fcvtau,
+            (0b11101, true, false) => SimdOp2::Ucvtf,
+            (0b11010, true, true) => SimdOp2::Fcvtpu,
+            (0b11011, true, true) => SimdOp2::Fcvtzu,
+            _ => return None,
+        };
+        return Some(Instruction::SimdScalarTwoMisc { rd, rn, op, esize: 16 });
     }
 
     // 27c. AdvSIMD scalar three same: 01 U 11110 size 1 Rm opcode 1 Rn Rd.
@@ -2238,11 +2257,55 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
-    // 29b0. AdvSIMD two-register miscellaneous, half precision (FEAT_FP16), FABS/FNEG only:
-    //       0 Q U 01110 1 111100 01111 10 Rn Rd (U = 1 is FNEG). A sign-bit operation on each 16-bit lane, no
-    //       exceptions. The other half-precision forms of this group stay undecoded.
-    if (raw & 0x9FFF_FC00) == 0x0EF8_F800 {
-        return Some(Instruction::SimdFpAbsNegHalf { rd, rn, neg: u, q });
+    // 29b0. AdvSIMD two-register miscellaneous, half precision (FEAT_FP16): 0 Q U 01110 a 1111 00 opcode 10 Rn Rd.
+    //       Floating-point results are SimdFpTwoMiscHalf; FCVT*/SCVTF/UCVTF are SimdTwoMisc with 16-bit lanes.
+    if (raw & 0x9F7E_0C00) == 0x0E78_0800 {
+        let a = (raw >> 23) & 1 == 1;
+        let fp = match ((raw >> 12) & 0x1F, u, a) {
+            (0b11000, false, false) => Some(SimdFpOp2::Frintn),
+            (0b11001, false, false) => Some(SimdFpOp2::Frintm),
+            (0b01100, false, true) => Some(SimdFpOp2::Fcmgt0),
+            (0b01101, false, true) => Some(SimdFpOp2::Fcmeq0),
+            (0b01110, false, true) => Some(SimdFpOp2::Fcmlt0),
+            (0b01111, false, true) => Some(SimdFpOp2::Fabs),
+            (0b11000, false, true) => Some(SimdFpOp2::Frintp),
+            (0b11001, false, true) => Some(SimdFpOp2::Frintz),
+            (0b11101, false, true) => Some(SimdFpOp2::Frecpe),
+            (0b11000, true, false) => Some(SimdFpOp2::Frinta),
+            (0b11001, true, false) => Some(SimdFpOp2::Frintx),
+            (0b01100, true, true) => Some(SimdFpOp2::Fcmge0),
+            (0b01101, true, true) => Some(SimdFpOp2::Fcmle0),
+            (0b01111, true, true) => Some(SimdFpOp2::Fneg),
+            (0b11001, true, true) => Some(SimdFpOp2::Frinti),
+            (0b11101, true, true) => Some(SimdFpOp2::Frsqrte),
+            (0b11111, true, true) => Some(SimdFpOp2::Fsqrt),
+            _ => None,
+        };
+        if let Some(op) = fp {
+            return Some(Instruction::SimdFpTwoMiscHalf { rd, rn, op, q });
+        }
+        let op = match ((raw >> 12) & 0x1F, u, a) {
+            (0b11010, false, false) => SimdOp2::Fcvtns,
+            (0b11011, false, false) => SimdOp2::Fcvtms,
+            (0b11100, false, false) => SimdOp2::Fcvtas,
+            (0b11101, false, false) => SimdOp2::Scvtf,
+            (0b11010, false, true) => SimdOp2::Fcvtps,
+            (0b11011, false, true) => SimdOp2::Fcvtzs,
+            (0b11010, true, false) => SimdOp2::Fcvtnu,
+            (0b11011, true, false) => SimdOp2::Fcvtmu,
+            (0b11100, true, false) => SimdOp2::Fcvtau,
+            (0b11101, true, false) => SimdOp2::Ucvtf,
+            (0b11010, true, true) => SimdOp2::Fcvtpu,
+            (0b11011, true, true) => SimdOp2::Fcvtzu,
+            _ => return None,
+        };
+        return Some(Instruction::SimdTwoMisc {
+            rd,
+            rn,
+            op,
+            esize: 16,
+            q,
+        });
     }
 
     // 29b. AdvSIMD two-register miscellaneous, floating point: 0 Q U 01110 a sz 10000 opcode 10 Rn Rd
@@ -2455,13 +2518,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
 
     // 30b. AdvSIMD shift by immediate, float <-> fixed-point (vector): 0 Q U 011110 immh immb opcode 1 Rn Rd, opcode 11100 is
     //      SCVTF (U = 0) / UCVTF (U = 1), 11111 is FCVTZS (U = 0) / FCVTZU (U = 1). immh = 01xx is 32-bit lanes and
-    //      1xxx is 64-bit lanes (Q required), fbits = 2 * esize - immh:immb. immh = 0001 is reserved and 001x is half
-    //      precision, which is not decoded.
+    //      1xxx is 64-bit lanes (Q required), 001x is half precision, fbits = 2 * esize - immh:immb. immh = 0001 is
+    //      reserved.
     if (raw & 0x9F80_0400) == 0x0F00_0400 && matches!((raw >> 11) & 0x1F, 0b11100 | 0b11111) {
         let immh = (raw >> 19) & 0xF;
         let imm = (raw >> 16) & 0x7F; // immh:immb
         let esize = match immh {
-            0b0100..=0b0111 => 32u32,
+            0b0010..=0b0011 => 16u32,
+            0b0100..=0b0111 => 32,
             0b1000..=0b1111 if q => 64,
             _ => return None,
         };
@@ -2483,13 +2547,13 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
 
     // 30c. AdvSIMD scalar shift by immediate, float <-> fixed-point: 01 U 111110 immh immb opcode 1 Rn Rd, opcode 11100 is
     //      SCVTF (U = 0) / UCVTF (U = 1), 11111 is FCVTZS (U = 0) / FCVTZU (U = 1). immh = 01xx is a single (Sd, Sn) and
-    //      1xxx a double (Dd, Dn), fbits = 2 * esize - immh:immb. immh = 0001 is reserved and 001x is half precision,
-    //      which is not decoded.
+    //      1xxx a double (Dd, Dn), 001x a half (Hd, Hn), fbits = 2 * esize - immh:immb. immh = 0001 is reserved.
     if (raw & 0xDF80_0400) == 0x5F00_0400 && matches!((raw >> 11) & 0x1F, 0b11100 | 0b11111) {
         let immh = (raw >> 19) & 0xF;
         let imm = (raw >> 16) & 0x7F; // immh:immb
         let esize = match immh {
-            0b0100..=0b0111 => 32u32,
+            0b0010..=0b0011 => 16u32,
+            0b0100..=0b0111 => 32,
             0b1000..=0b1111 => 64,
             _ => return None,
         };
