@@ -1783,6 +1783,7 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 op,
                 esize: 8u8 << size,
                 q,
+                scalar: false,
             });
         }
         // PMULL / PMULL2: opcode 1110, U == 0, size 0 (8H from 8B) or size 3 (1Q from 1D).
@@ -1843,6 +1844,50 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             rm,
             is_double: (raw >> 22) & 1 == 1,
         });
+    }
+
+    // AdvSIMD scalar three different: SQDMLAL 1001, SQDMLSL 1011, SQDMULL 1101: 01 0 11110 size 1 Rm opcode 00 Rn Rd
+    //   (size 01: Sd, Hn, Hm; 10: Dd, Sn, Sm)
+    if (raw & 0xFF20_0C00) == 0x5E20_0000 && (size == 1 || size == 2) {
+        let op = match (raw >> 12) & 0xF {
+            0b1001 => Some(SimdSatLongOp::Sqdmlal),
+            0b1011 => Some(SimdSatLongOp::Sqdmlsl),
+            0b1101 => Some(SimdSatLongOp::Sqdmull),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Some(Instruction::SimdSatLong {
+                rd,
+                rn,
+                rm,
+                op,
+                esize: 8u8 << size,
+                q: false,
+                scalar: true,
+            });
+        }
+    }
+
+    // FCMEQ/FCMGE/FCMGT/FACGE/FACGT (scalar, register): 01 U 11110 a sz 1 Rm 1110 x 1 Rn Rd
+    //   (x = 0: FCMEQ U0 a0, FCMGE U1 a0, FCMGT U1 a1; x = 1: FACGE U1 a0, FACGT U1 a1)
+    if (raw & 0xDF20_F400) == 0x5E20_E400 {
+        let op = match ((raw >> 11) & 1, u, (raw >> 23) & 1) {
+            (0, false, 0) => Some(SimdFpOp3::Fcmeq),
+            (0, true, 0) => Some(SimdFpOp3::Fcmge),
+            (0, true, 1) => Some(SimdFpOp3::Fcmgt),
+            (1, true, 0) => Some(SimdFpOp3::Facge),
+            (1, true, 1) => Some(SimdFpOp3::Facgt),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Some(Instruction::FpScalarThreeSame {
+                rd,
+                rn,
+                rm,
+                op,
+                esize: if (raw >> 22) & 1 == 1 { 64 } else { 32 },
+            });
+        }
     }
 
     // FRECPS / FRSQRTS (scalar): 01 0 11110 a sz 1 Rm 11111 1 Rn Rd (a = 0 FRECPS, a = 1 FRSQRTS)
@@ -2280,6 +2325,23 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
     }
 
+    // 29a1. AdvSIMD scalar two-register miscellaneous, integer D forms (size 11): CMGT/CMGE/CMEQ/CMLE/CMLT #0, ABS, NEG
+    if (raw & 0xDF3E_0C00) == 0x5E20_0800 && size == 3 {
+        let op = match ((raw >> 12) & 0x1F, u) {
+            (0b01000, false) => Some(SimdOp2::Cmgt0),
+            (0b01000, true) => Some(SimdOp2::Cmge0),
+            (0b01001, false) => Some(SimdOp2::Cmeq0),
+            (0b01001, true) => Some(SimdOp2::Cmle0),
+            (0b01010, false) => Some(SimdOp2::Cmlt0),
+            (0b01011, false) => Some(SimdOp2::Abs),
+            (0b01011, true) => Some(SimdOp2::Neg),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Some(Instruction::SimdScalarTwoMisc { rd, rn, op, esize: 64 });
+        }
+    }
+
     // 29a. AdvSIMD scalar two-register miscellaneous: 01 U 11110 size 10000 opcode 10 Rn Rd (conversions only)
     if (raw & 0xDF3E_0C00) == 0x5E20_0800 {
         // FCVTXN Sd, Dn: size = 01, U = 1, opcode = 10110. One single, rest of Vd zero.
@@ -2298,6 +2360,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11101, true, 0) => SimdOp2::Ucvtf,
             (0b11011, false, 1) => SimdOp2::Fcvtzs,
             (0b11011, true, 1) => SimdOp2::Fcvtzu,
+            (0b11010, false, 0) => SimdOp2::Fcvtns,
+            (0b11011, false, 0) => SimdOp2::Fcvtms,
+            (0b11100, false, 0) => SimdOp2::Fcvtas,
+            (0b11010, false, 1) => SimdOp2::Fcvtps,
+            (0b11010, true, 0) => SimdOp2::Fcvtnu,
+            (0b11011, true, 0) => SimdOp2::Fcvtmu,
+            (0b11100, true, 0) => SimdOp2::Fcvtau,
+            (0b11010, true, 1) => SimdOp2::Fcvtpu,
             _ => return None,
         };
         return Some(Instruction::SimdScalarTwoMisc {
