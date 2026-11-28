@@ -5,6 +5,9 @@ use crate::cpu::CpuTier;
 const HELLO: &[u8] = include_bytes!("../../tests/linux-elf/bin/hello.elf");
 const EXITCODE: &[u8] = include_bytes!("../../tests/linux-elf/bin/exitcode.elf");
 const ARGS: &[u8] = include_bytes!("../../tests/linux-elf/bin/args.elf");
+const PIE: &[u8] = include_bytes!("../../tests/linux-elf/bin/pie.elf");
+const FAKELD: &[u8] = include_bytes!("../../tests/linux-elf/bin/fakeld.elf");
+const DYNMAIN: &[u8] = include_bytes!("../../tests/linux-elf/bin/dynmain.elf");
 const READFILE: &[u8] = include_bytes!("../../tests/linux-elf/bin/readfile.elf");
 const MEMORY: &[u8] = include_bytes!("../../tests/linux-elf/bin/memory.elf");
 const BADSYS: &[u8] = include_bytes!("../../tests/linux-elf/bin/badsyscall.elf");
@@ -310,9 +313,9 @@ fn loader_rejects_bad_inputs() {
         assert!(diagnosis.contains(needle), "{diagnosis}");
     };
     reject(b"not an elf at all", "not an ELF");
-    let mut dynamic = HELLO.to_vec();
-    dynamic[16] = 3; // ET_DYN
-    reject(&dynamic, "ET_DYN");
+    let mut core = HELLO.to_vec();
+    core[16] = 4; // ET_CORE
+    reject(&core, "e_type 4");
     let mut x86 = HELLO.to_vec();
     x86[18] = 62; // EM_X86_64
     reject(&x86, "not AArch64");
@@ -328,7 +331,7 @@ fn loader_rejects_bad_inputs() {
     let mut interp = HELLO.to_vec();
     let phoff = u64::from_le_bytes(interp[32..40].try_into().unwrap()) as usize;
     interp[phoff..phoff + 4].copy_from_slice(&3u32.to_le_bytes());
-    reject(&interp, "PT_INTERP");
+    reject(&interp, "--root");
 }
 
 #[test]
@@ -1743,4 +1746,83 @@ fn run_elf_root_option_lets_a_guest_read_host_files() {
     let (r, out) = go(READFILE, &["readfile", "/conf/app.cfg"], CpuTier::Tier3);
     assert_eq!((r.stop, out.as_str()), (Stop::Exited(1), "open failed: -2\n"));
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A static PIE (ET_DYN without PT_INTERP) is placed at a load base and runs there.
+#[test]
+fn pie_executables_load_at_a_base_address() {
+    for t in TIERS {
+        let (r, out) = go(PIE, &["pie"], t);
+        assert_eq!(r.stop, Stop::Exited(0), "{t:?}: {r:?}");
+        assert_eq!(out, "pie runs at its load base\n");
+    }
+}
+
+/// PT_INTERP: the interpreter comes from `--root`, runs first at its own base with AT_BASE, AT_ENTRY and AT_PHDR
+/// set, and jumps to the main program, as ld.so does.
+#[test]
+fn an_interpreter_from_the_root_starts_first_and_jumps_to_main() {
+    let dir = std::env::temp_dir().join(format!("ounce_interp_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("lib")).unwrap();
+    std::fs::write(dir.join("lib/fake-ld.so"), FAKELD).unwrap();
+    for tier in TIERS {
+        let mut cap = Capture::default();
+        let opts = Options {
+            tier,
+            root: Some(dir.clone()),
+            ..Options::default()
+        };
+        let r = run(DYNMAIN, &["dynmain".to_string()], &opts, &mut cap, &mut |_| {});
+        assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&cap.out),
+            "ld: running at AT_BASE\nld: AT_ENTRY and AT_PHDR set\nmain: reached through the interpreter\n"
+        );
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Without `--root` a dynamic executable cannot be started; the diagnosis names the interpreter it needs.
+#[test]
+fn a_dynamic_executable_without_root_names_its_interpreter() {
+    let (r, _) = go(DYNMAIN, &["dynmain"], CpuTier::Tier3);
+    let Stop::Failed { diagnosis, status } = r.stop else {
+        panic!("{r:?}")
+    };
+    assert_eq!(status, 72);
+    assert!(
+        diagnosis.contains("/lib/fake-ld.so") && diagnosis.contains("--root"),
+        "{diagnosis}"
+    );
+}
+
+/// The guest is an unprivileged user with no network: it may only "change" to its own ids, it has no supplementary
+/// groups, `socket` fails as for an unsupported family, and `sendfile` is EINVAL so callers copy with read/write.
+#[test]
+fn identity_socket_and_sendfile_answers() {
+    use super::syscalls::{EAFNOSUPPORT, EINVAL, EPERM, GID, Outcome, Process, UID};
+    use crate::mmu::Memory;
+    let (mut proc, mut mem, mut out) = (Process::new(0x1000), Memory::new(), Capture::default());
+    let mut call = |nr: u64, a: [u64; 6]| proc.dispatch(nr, a, &mut mem, &mut out);
+    let keep = u32::MAX as u64;
+    assert_eq!(call(146, [UID, 0, 0, 0, 0, 0]), Outcome::Return(0), "setuid to self");
+    assert_eq!(call(146, [0, 0, 0, 0, 0, 0]), Outcome::Return(-EPERM), "setuid(0)");
+    assert_eq!(call(144, [GID, 0, 0, 0, 0, 0]), Outcome::Return(0), "setgid to self");
+    assert_eq!(
+        call(147, [keep, UID, keep, 0, 0, 0]),
+        Outcome::Return(0),
+        "setresuid keeping two"
+    );
+    assert_eq!(
+        call(149, [GID, 0, GID, 0, 0, 0]),
+        Outcome::Return(-EPERM),
+        "setresgid to root"
+    );
+    assert_eq!(call(158, [0, 0, 0, 0, 0, 0]), Outcome::Return(0), "getgroups: none");
+    assert_eq!(
+        call(198, [1, 0x80001, 0, 0, 0, 0]),
+        Outcome::Return(-EAFNOSUPPORT),
+        "socket(AF_UNIX)"
+    );
+    assert_eq!(call(71, [1, 3, 0, 1 << 24, 0, 0]), Outcome::Return(-EINVAL), "sendfile");
 }

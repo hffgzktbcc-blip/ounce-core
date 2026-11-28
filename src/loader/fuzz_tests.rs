@@ -410,17 +410,26 @@ fn fuzz_linux_elf_adversarial_headers() {
         crate::linux::elf::load(&huge_mem, &mut Memory::new()),
         Err(crate::linux::elf::ElfError::Unsupported(_))
     ));
+    // PT_DYNAMIC is left to the interpreter and PT_INTERP is recorded for the runner, so both load; a PT_INTERP
+    // that points outside the file is malformed
     for pt in [2u32, 3u32] {
         let dyn_elf = build_synthetic_linux_elf(
             0x40_0078,
             &[(pt, 4, 0, 0x40_0000, 0, 0), (1, 5, 0, 0x40_0000, 124, 124)],
             &0xD65F_03C0u32.to_le_bytes(),
         );
-        assert!(matches!(
-            crate::linux::elf::load(&dyn_elf, &mut Memory::new()),
-            Err(crate::linux::elf::ElfError::Unsupported(_))
-        ));
+        let image = crate::linux::elf::load(&dyn_elf, &mut Memory::new()).expect("loads");
+        assert_eq!(image.interp.is_some(), pt == 3);
     }
+    let bad_interp = build_synthetic_linux_elf(
+        0x40_0078,
+        &[(3, 4, u64::MAX - 8, 0x40_0000, 64, 64), (1, 5, 0, 0x40_0000, 124, 124)],
+        &0xD65F_03C0u32.to_le_bytes(),
+    );
+    assert!(matches!(
+        crate::linux::elf::load(&bad_interp, &mut Memory::new()),
+        Err(crate::linux::elf::ElfError::Malformed(_))
+    ));
     // All truncations up to base.len() and truncated real fixture.
     for cut in 0..=base.len() {
         verify_linux_elf_load(&base[..cut]);

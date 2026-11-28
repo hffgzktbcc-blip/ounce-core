@@ -6,6 +6,7 @@ use crate::mmu::{Memory, Permission};
 use std::time::Instant;
 
 pub const EPERM: i64 = 1;
+pub const EAFNOSUPPORT: i64 = 97;
 pub const ENOENT: i64 = 2;
 pub const ESRCH: i64 = 3;
 pub const EBADF: i64 = 9;
@@ -420,9 +421,7 @@ impl Process {
     /// The host path of guest path `norm` (normalized, absolute) under `--root`, if it exists there. Symlinks are
     /// resolved first and anything that resolves outside the root is treated as missing.
     fn host_path(&self, norm: &str) -> Option<std::path::PathBuf> {
-        let root = self.host_root.as_ref()?;
-        let real = root.join(norm.trim_start_matches('/')).canonicalize().ok()?;
-        real.starts_with(root).then_some(real)
+        resolve_under(self.host_root.as_ref()?, norm)
     }
 
     /// `openat` of a path under `--root`: read-only; a directory gets its listing, a file its contents.
@@ -664,6 +663,37 @@ impl Process {
             SYS_GETPID | SYS_GETTID => PID as i64,
             SYS_GETPPID => 0,
             SYS_GETUID | SYS_GETEUID => UID as i64,
+            // the guest is an unprivileged user: it may "change" to its own ids only (setresuid/setresgid take -1 to
+            // keep one), and it is in no supplementary group
+            146 => {
+                if a[0] == UID {
+                    0
+                } else {
+                    -EPERM
+                }
+            }
+            144 => {
+                if a[0] == GID {
+                    0
+                } else {
+                    -EPERM
+                }
+            }
+            147 | 149 => {
+                let own = if nr == 147 { UID } else { GID };
+                if a[..3].iter().all(|&id| id == own || id as u32 == u32::MAX) {
+                    0
+                } else {
+                    -EPERM
+                }
+            }
+            158 => 0,
+            // no networking: socket(2) fails as for an unsupported address family (musl's user lookup then reads
+            // /etc/passwd, as without nscd)
+            198 => -EAFNOSUPPORT,
+            // sendfile(2) is not offered; EINVAL is what Linux returns for descriptors it cannot splice, and callers
+            // such as busybox then copy with read/write
+            71 => -EINVAL,
             SYS_GETGID | SYS_GETEGID => GID as i64,
             278 => self.sys_getrandom(a[0], a[1], a[2], mmu),
             261 => {
@@ -1941,6 +1971,20 @@ fn read_path(ptr: u64, mmu: &Memory) -> Result<String, i64> {
         bytes.push(b[0]);
     }
     Err(-ENAMETOOLONG)
+}
+
+/// The host path of normalized guest path `norm` under the canonical `root`, if it exists and resolves (symlinks
+/// included) inside it.
+fn resolve_under(root: &std::path::Path, norm: &str) -> Option<std::path::PathBuf> {
+    let real = root.join(norm.trim_start_matches('/')).canonicalize().ok()?;
+    real.starts_with(root).then_some(real)
+}
+
+/// Reads guest path `path` from under the host directory `root`, with the `--root` sandbox rules.
+pub fn read_under_root(root: &std::path::Path, path: &str) -> std::io::Result<Vec<u8>> {
+    let not_found = || std::io::Error::new(std::io::ErrorKind::NotFound, format!("{path} is not under the root"));
+    let real = resolve_under(&root.canonicalize()?, &normalize_path(path)).ok_or_else(not_found)?;
+    std::fs::read(real)
 }
 
 fn normalize_path(raw: &str) -> String {

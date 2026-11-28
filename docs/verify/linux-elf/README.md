@@ -36,7 +36,7 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
 - **Libc-linked programs verified so far** (LZ4, xxHash, cJSON, zlib, wasm3, [PROGRAMS.md](PROGRAMS.md), and [HIGH-STAR-OPT-MATRIX.md](HIGH-STAR-OPT-MATRIX.md)). Other static glibc/musl binaries may stop early:
   they call `futex`, `rseq`, `set_robust_list` or other syscalls that are not implemented.
   Each stops with a diagnosis naming the syscall. See [LIMITS.md](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026).
-- Dynamic executables, `ET_DYN`/static-PIE, 32-bit and big-endian ELF are rejected. `PT_TLS` is not
+- Dynamic executables run when their program interpreter is under `--root` (musl programs whose only library is libc; no other shared libraries yet), and a static-PIE loads at a base. 32-bit and big-endian ELF are rejected. `PT_TLS` is not
   set up (libc startup is expected to do it).
 - No host files unless `--root=DIR` is given (then a read-only view of `DIR`; see LIMITS.md); otherwise only the in-memory scratch area above. No sockets, threads, `clone`, `execve`, asynchronous signals, or `fork`. Synchronous memory faults can deliver a guest
   SIGSEGV handler (including an alternate stack and `rt_sigreturn`).

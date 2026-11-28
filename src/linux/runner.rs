@@ -222,7 +222,7 @@ pub fn run_with_stdin(
     log: &mut dyn FnMut(&str),
 ) -> Report {
     let mut mmu = Memory::new();
-    let image = match elf::load(elf_bytes, &mut mmu) {
+    let mut image = match elf::load(elf_bytes, &mut mmu) {
         Ok(i) => i,
         Err(e @ (ElfError::NotElf | ElfError::Unsupported(_) | ElfError::Malformed(_))) => {
             return fail(
@@ -235,6 +235,32 @@ pub fn run_with_stdin(
             );
         }
     };
+    // PT_INTERP: the program interpreter (ld.so) comes from --root, runs first at its own base and starts the program
+    let mut start = image.entry;
+    if let Some(path) = image.interp.clone() {
+        let not_started = |why: String| fail(why, EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0);
+        let Some(root) = &opts.root else {
+            return not_started(format!(
+                "dynamically linked: its program interpreter {path} must come from --root=DIR, a folder that contains {path}"
+            ));
+        };
+        let bytes = match super::syscalls::read_under_root(root, &path) {
+            Ok(b) => b,
+            Err(e) => {
+                return not_started(format!(
+                    "cannot read the program interpreter {path} under --root={}: {e}",
+                    root.display()
+                ));
+            }
+        };
+        match elf::load_at(&bytes, &mut mmu, elf::INTERP_BASE) {
+            Ok(ld) => {
+                image.at_base = ld.base;
+                start = ld.entry;
+            }
+            Err(e) => return not_started(format!("cannot load the program interpreter {path}: {e}")),
+        }
+    }
     let execfn = argv.first().map(String::as_str).unwrap_or("a.out");
     let (sp, auxv_bytes) = match elf::build_stack_with_auxv(&mut mmu, &image, argv, &[], execfn) {
         Ok(res) => res,
@@ -257,7 +283,7 @@ pub fn run_with_stdin(
     let engine_name = engine.name();
     let mut cpu = Cpu::new();
     cpu.set_linux_counter(opts.deterministic);
-    cpu.regs.pc = image.entry;
+    cpu.regs.pc = start;
     cpu.regs.sp = sp;
     let mut proc = if opts.deterministic {
         Process::new_deterministic(image.brk_start)
