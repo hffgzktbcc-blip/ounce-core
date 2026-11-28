@@ -1,10 +1,9 @@
 # cargo-deny configuration for ounce-core (MIT)
 
 [advisories]
-ignore = [
-    # Unmaintained advisory on ttf-parser 0.25.1 via ab_glyph -> owned_ttf_parser; no safe upgrade available.
-    "RUSTSEC-2026-0192",
-]
+# No ignores. RUSTSEC-2026-0192 (ttf-parser is unmaintained, reached through ab_glyph -> owned_ttf_parser) is
+# not reported while `unmaintained` keeps its default scope of workspace dependencies only. If that scope is
+# widened to "all", this advisory has to be ignored again, as no patched version exists.
 
 [licenses]
 allow = [
@@ -18,6 +17,9 @@ allow = [
     "Zlib",
     "Unicode-3.0",
 ]
+# BSD-2-Clause and BSD-3-Clause are only needed by the optional `gpu-present` feature (arrayref, tiny-skia),
+# which CI builds but this check does not include. Do not warn about them in the default feature set.
+unused-allowed-license = "allow"
 confidence-threshold = 0.8
 
 [bans]
