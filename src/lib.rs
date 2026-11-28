@@ -179,6 +179,7 @@ pub fn run_elf(bytes: &[u8], options: &RunOptions) -> StopReport {
         max_instructions: options.max_instructions,
         trace_syscalls: false,
         deterministic: options.deterministic,
+        root: None,
     };
     let mut sink = NullOutput;
     let report = linux::runner::run(bytes, &argv, &linux_opts, &mut sink, &mut |_| {});
