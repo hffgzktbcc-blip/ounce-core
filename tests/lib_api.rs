@@ -1,4 +1,8 @@
-use ounce_core::{EngineKind, RunOptions, StopClass, run_elf, run_nro};
+// Without the `nro` feature the NRO tests are compiled out, which leaves some of their helpers unused.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
+#[cfg(feature = "nro")]
+use ounce_core::run_nro;
+use ounce_core::{EngineKind, RunOptions, StopClass, run_elf};
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
@@ -19,6 +23,7 @@ fn library_run_elf_returns_typed_stop_report() {
     assert_eq!(report.to_json()["schema"], "ounce.run.v1");
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn library_run_nro_returns_typed_stop_report() {
     let bytes = std::fs::read(fixture("tests/fixtures/nro/hello/hello.nro")).unwrap();
@@ -34,6 +39,7 @@ fn library_run_nro_returns_typed_stop_report() {
     assert_eq!(report.to_json()["schema"], "ounce.run.v1");
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn library_run_nro_rejects_invalid_bytes_with_loader_error() {
     let report = run_nro(b"not-an-nro", &RunOptions::default());

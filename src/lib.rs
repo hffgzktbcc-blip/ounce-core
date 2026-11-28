@@ -4,6 +4,9 @@
 //! Any host-level exception (a native code emitter, a raw graphics driver) lives
 //! in its own workspace crate, per `AGENTS.md` "Unsafe Boundary".
 #![forbid(unsafe_code)]
+// Without the `nro` feature the helpers that only the NRO homebrew runtime uses (run-loop tracing, frame and audio
+// options, CLI hints, PAGE_SIZE) are unused; builds with `nro` still report dead code everywhere.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
 // Explicit zero terms (`t * 3 + 0`, `0 << 5`, `ALL_ONES & MASK`) spell out register, lane and
 // bit-field layouts next to their non-zero neighbours; they are documentation, not mistakes.
 #![allow(clippy::identity_op)]
@@ -29,6 +32,7 @@ macro_rules! println {
     };
 }
 
+#[cfg(feature = "nro")]
 mod audio;
 mod census;
 mod cli;
@@ -36,37 +40,54 @@ mod cli_flow;
 mod cpu;
 mod disasm;
 mod diverge;
+#[cfg(feature = "nro")]
 mod fs;
 mod fuzz_replay;
+#[cfg(feature = "nro")]
 mod gpu;
+#[cfg(feature = "nro")]
 mod hid;
+#[cfg(feature = "nro")]
 mod kernel;
 mod lab;
 mod linux;
+#[cfg(feature = "nro")]
 mod loader;
+#[cfg(feature = "nro")]
 mod loop_controls;
 mod mmu;
 mod run_report;
 mod trace;
 mod trace_summary;
+#[cfg(feature = "nro")]
 mod ui;
 
+#[cfg(feature = "nro")]
 use audio::HostAudioSink;
 use cli::*;
+#[cfg(feature = "nro")]
 use cpu::{Cpu, StepResult};
+#[cfg(feature = "nro")]
 use gpu::nvgpu::{
     METHOD_BIND_SHADER_PROGRAM, METHOD_BIND_TEXTURE_2D, METHOD_CLEAR_SURFACE, METHOD_DISPATCH_UPSCALE_2X,
     METHOD_DRAW_ARRAYS, METHOD_DRAW_TEXTURED_ARRAYS, METHOD_SET_CLEAR_COLOR, METHOD_SET_DEPTH_TEST_ENABLE,
     METHOD_SET_MVP_MATRIX, METHOD_SET_RENDER_TARGET_ADDR, METHOD_SET_VERTEX_ARRAY_ADDR, METHOD_SET_VIEWPORT_DIMS,
     NvgpuChannel, SubmissionMode,
 };
+#[cfg(feature = "nro")]
 use gpu::shader::SassOp;
+#[cfg(feature = "nro")]
 use gpu::{DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig, DisplayServer, SCREEN_HEIGHT, SCREEN_WIDTH};
+#[cfg(feature = "nro")]
 use hid::{HID_SHARED_MEM_ADDR, HidServer, HostGamepadManager};
+#[cfg(feature = "nro")]
 use kernel::{CMIF_IN_MAGIC, DEFAULT_TLS_ADDR, HorizonKernel, ServiceType, SvcResult, TLS_SIZE};
+#[cfg(feature = "nro")]
 use loader::BootLoader;
+#[cfg(feature = "nro")]
 use mmu::{Memory, Permission};
 use std::env;
+#[cfg(feature = "nro")]
 use std::time::Instant;
 
 const DEFAULT_BASE_ADDR: u64 = 0x80000000;
@@ -179,12 +200,14 @@ pub fn run_elf(bytes: &[u8], options: &RunOptions) -> StopReport {
         max_instructions: options.max_instructions,
         trace_syscalls: false,
         deterministic: options.deterministic,
+        root: None,
     };
     let mut sink = NullOutput;
     let report = linux::runner::run(bytes, &argv, &linux_opts, &mut sink, &mut |_| {});
     report.to_run_report(tier)
 }
 
+#[cfg(feature = "nro")]
 /// Runs an unencrypted homebrew `.nro` image in memory and returns its `ounce.run.v1` [`StopReport`].
 pub fn run_nro(bytes: &[u8], options: &RunOptions) -> StopReport {
     let tier: cpu::CpuTier = options.engine.into();
@@ -278,7 +301,9 @@ pub fn cli_main() {
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     let mut after_separator = false;
+    #[cfg(feature = "nro")]
     let mut loop_max_frames: Option<usize> = None;
+    #[cfg(feature = "nro")]
     let mut loop_presses: Vec<loop_controls::Press> = Vec::new();
     let mut raw_args = env::args().peekable();
     while let Some(arg) = raw_args.next() {
@@ -297,6 +322,7 @@ pub fn cli_main() {
             }
             continue;
         }
+        #[cfg(feature = "nro")]
         if arg == "--max-frames" || arg == "--press" || arg.starts_with("--max-frames=") || arg.starts_with("--press=")
         {
             let (flag, inline) = match arg.split_once('=') {
@@ -342,17 +368,20 @@ pub fn cli_main() {
             }
             continue;
         }
-        match arg.strip_prefix("--present=") {
-            Some(value) => match gpu::BackendKind::parse(value) {
+        #[cfg(feature = "nro")]
+        if let Some(value) = arg.strip_prefix("--present=") {
+            match gpu::BackendKind::parse(value) {
                 Some(kind) => gpu::BackendKind::set_cli_override(kind),
                 None => eprintln!(
                     "[Display] Unknown --present value '{value}' (expected auto, gpu, minifb or headless); ignoring."
                 ),
-            },
-            None => args.push(arg),
+            }
+            continue;
         }
+        args.push(arg);
     }
 
+    #[cfg(feature = "nro")]
     loop_controls::configure(loop_max_frames, loop_presses);
     if args.len() < 2 {
         print!("{}", cli_flow::getting_started(env!("CARGO_PKG_VERSION")));
@@ -376,11 +405,14 @@ pub fn cli_main() {
             print_banner();
             lab::run_cli(&args[2..]);
         }
+        #[cfg(feature = "nro")]
         "test" | "demo" => {
             print_banner();
             run_built_in_demo();
         }
+        #[cfg(feature = "nro")]
         "jit-selftest" => run_jit_selftest(),
+        #[cfg(feature = "nro")]
         "gfx" | "display" => {
             print_banner();
             let max_frames = if args.len() >= 3 {
@@ -390,6 +422,7 @@ pub fn cli_main() {
             };
             run_gfx_demo(max_frames);
         }
+        #[cfg(feature = "nro")]
         "play" | "game" => {
             print_banner();
             let max_frames = if args.len() >= 3 {
@@ -399,6 +432,7 @@ pub fn cli_main() {
             };
             run_playable_game_demo(max_frames);
         }
+        #[cfg(feature = "nro")]
         "gpu3d" | "3d" => {
             print_banner();
             let max_frames = if args.len() >= 3 {
@@ -410,6 +444,7 @@ pub fn cli_main() {
         }
         "replay-instruction" => std::process::exit(fuzz_replay::replay_bundle(&args[2..])),
         "run-elf" => std::process::exit(linux::runner::cli(&args[2..])),
+        #[cfg(feature = "nro")]
         "run" | "run-nro" => {
             let nro_only = args[1] == "run-nro";
             if args.len() < 3 {
@@ -441,6 +476,7 @@ pub fn cli_main() {
             print_banner();
             run_file(file_path, &run_args.guest, run_args.gui, nro_only);
         }
+        #[cfg(feature = "nro")]
         "demo-dir" | "dir-demo" | "loose-demo" => {
             print_banner();
             let out_dir = if args.len() >= 3 && !args[2].starts_with('-') {
@@ -457,6 +493,7 @@ pub fn cli_main() {
         "census" => {
             std::process::exit(census::run(&args[2..]));
         }
+        #[cfg(feature = "nro")]
         "inspect" => {
             if args.len() < 3 {
                 eprint!(
@@ -484,6 +521,16 @@ pub fn cli_main() {
                     std::process::exit(1);
                 }
             }
+        }
+        #[cfg(not(feature = "nro"))]
+        "test" | "demo" | "jit-selftest" | "gfx" | "display" | "play" | "game" | "gpu3d" | "3d" | "run" | "run-nro"
+        | "demo-dir" | "dir-demo" | "loose-demo" | "inspect" => {
+            eprintln!(
+                "`{}` is part of the NRO homebrew runtime, which this ounce-core was built without; rebuild with \
+                 `cargo build --features nro`.",
+                args[1]
+            );
+            std::process::exit(2);
         }
         other => {
             eprint!("{}", cli_flow::unknown_command(other));

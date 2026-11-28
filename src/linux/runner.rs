@@ -23,6 +23,8 @@ pub struct Options {
     pub max_instructions: u64,
     pub trace_syscalls: bool,
     pub deterministic: bool,
+    /// `--root=DIR`: a host directory the guest sees read-only as its file system outside the scratch area
+    pub root: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
@@ -32,6 +34,7 @@ impl Default for Options {
             max_instructions: 2_000_000_000,
             trace_syscalls: false,
             deterministic: false,
+            root: None,
         }
     }
 }
@@ -219,7 +222,7 @@ pub fn run_with_stdin(
     log: &mut dyn FnMut(&str),
 ) -> Report {
     let mut mmu = Memory::new();
-    let image = match elf::load(elf_bytes, &mut mmu) {
+    let mut image = match elf::load(elf_bytes, &mut mmu) {
         Ok(i) => i,
         Err(e @ (ElfError::NotElf | ElfError::Unsupported(_) | ElfError::Malformed(_))) => {
             return fail(
@@ -232,6 +235,32 @@ pub fn run_with_stdin(
             );
         }
     };
+    // PT_INTERP: the program interpreter (ld.so) comes from --root, runs first at its own base and starts the program
+    let mut start = image.entry;
+    if let Some(path) = image.interp.clone() {
+        let not_started = |why: String| fail(why, EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0);
+        let Some(root) = &opts.root else {
+            return not_started(format!(
+                "dynamically linked: its program interpreter {path} must come from --root=DIR, a folder that contains {path}"
+            ));
+        };
+        let bytes = match super::syscalls::read_under_root(root, &path) {
+            Ok(b) => b,
+            Err(e) => {
+                return not_started(format!(
+                    "cannot read the program interpreter {path} under --root={}: {e}",
+                    root.display()
+                ));
+            }
+        };
+        match elf::load_at(&bytes, &mut mmu, elf::INTERP_BASE) {
+            Ok(ld) => {
+                image.at_base = ld.base;
+                start = ld.entry;
+            }
+            Err(e) => return not_started(format!("cannot load the program interpreter {path}: {e}")),
+        }
+    }
     let execfn = argv.first().map(String::as_str).unwrap_or("a.out");
     let (sp, auxv_bytes) = match elf::build_stack_with_auxv(&mut mmu, &image, argv, &[], execfn) {
         Ok(res) => res,
@@ -254,7 +283,7 @@ pub fn run_with_stdin(
     let engine_name = engine.name();
     let mut cpu = Cpu::new();
     cpu.set_linux_counter(opts.deterministic);
-    cpu.regs.pc = image.entry;
+    cpu.regs.pc = start;
     cpu.regs.sp = sp;
     let mut proc = if opts.deterministic {
         Process::new_deterministic(image.brk_start)
@@ -263,7 +292,14 @@ pub fn run_with_stdin(
     };
     proc.set_auxv(auxv_bytes);
     proc.set_stdin(stdin.to_vec());
+    if let Some(dir) = &opts.root
+        && let Err(e) = proc.set_host_root(dir)
+    {
+        let why = format!("--root={}: {e}", dir.display());
+        return fail(why, EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0);
+    }
     let (mut insns, mut syscalls) = (0u64, 0u64);
+    let mut threads = super::threads::Threads::new();
     loop {
         if insns >= opts.max_instructions {
             return fail(
@@ -281,7 +317,7 @@ pub fn run_with_stdin(
         if opts.deterministic {
             cpu.counter_ticks = cpu.counter_ticks.max(insns);
         }
-        let slice = (opts.max_instructions - insns).min(200_000) as usize;
+        let slice = threads.slice(opts.max_instructions - insns);
         let (n, exit) = engine.run_slice(&mut cpu, &mut mmu, slice);
         insns += n as u64;
         match exit {
@@ -304,7 +340,7 @@ pub fn run_with_stdin(
                     );
                 }
                 let nr = cpu.regs.read_x(8);
-                let args: [u64; 6] = std::array::from_fn(|i| cpu.regs.read_x(i as u8));
+                let mut args: [u64; 6] = std::array::from_fn(|i| cpu.regs.read_x(i as u8));
                 syscalls += 1;
                 proc.set_retired_instructions(insns);
                 if nr == 139 {
@@ -320,6 +356,40 @@ pub fn run_with_stdin(
                         );
                     }
                     continue;
+                }
+                // signals are the process's: a tkill/tgkill aimed at any live thread goes to the process
+                use super::threads::{SYS_TGKILL, SYS_TKILL, Step};
+                if nr == SYS_TKILL && threads.is_live(args[0]) {
+                    args[0] = super::syscalls::PID;
+                } else if nr == SYS_TGKILL && threads.is_live(args[1]) {
+                    args[1] = super::syscalls::PID;
+                }
+                match threads.syscall(nr, args, &mut cpu, &mut mmu) {
+                    Step::NotMine => {}
+                    step => {
+                        if opts.trace_syscalls {
+                            log(&format!("syscall {nr} {args:#x?} -> {step:?}"));
+                        }
+                        match step {
+                            Step::Return(v) => cpu.regs.write_x(0, v as u64),
+                            Step::ProcessExit(code) => {
+                                return Report {
+                                    stop: Stop::Exited(code),
+                                    instructions: insns,
+                                    syscalls,
+                                    engine: engine_name,
+                                    detail: StopDetail::at("clean_exit", &cpu, svc_pc),
+                                };
+                            }
+                            Step::Deadlock(why) => {
+                                // a deadlocked guest would run forever: report it as an exhausted budget
+                                let detail = StopDetail::at("budget_exhausted", &cpu, svc_pc);
+                                return fail(why, EXIT_BUDGET, detail, engine_name, insns, syscalls);
+                            }
+                            Step::Switched | Step::NotMine => {}
+                        }
+                        continue;
+                    }
                 }
                 let outcome = proc.dispatch(nr, args, &mut mmu, out);
                 if opts.trace_syscalls {
@@ -378,7 +448,8 @@ pub fn run_with_stdin(
                 }
                 return fail(diagnosis, EXIT_FAULT, detail, engine_name, insns, syscalls);
             }
-            _ => {}
+            // the slice ran out: the next runnable thread gets the CPU
+            _ => threads.preempt(&mut cpu),
         }
     }
 }
@@ -446,7 +517,7 @@ impl Output for HostOutput {
     }
 }
 
-const RUN_ELF_USAGE: &str = "usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [-- args...]";
+const RUN_ELF_USAGE: &str = "usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [--root=<dir>] [-- args...]";
 
 /// CLI entry: `args` are everything after `run-elf`. Returns the process exit status.
 pub fn cli(args: &[String]) -> i32 {
@@ -483,6 +554,8 @@ pub fn cli(args: &[String]) -> i32 {
         } else if a == "--help" || a == "-h" {
             println!("{RUN_ELF_USAGE}");
             return 0;
+        } else if let Some(dir) = a.strip_prefix("--root=") {
+            opts.root = Some(std::path::PathBuf::from(dir));
         } else if a == "--deterministic" {
             opts.deterministic = true;
         } else if a == "--trace-syscalls" {

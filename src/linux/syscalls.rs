@@ -6,6 +6,7 @@ use crate::mmu::{Memory, Permission};
 use std::time::Instant;
 
 pub const EPERM: i64 = 1;
+pub const EAFNOSUPPORT: i64 = 97;
 pub const ENOENT: i64 = 2;
 pub const ESRCH: i64 = 3;
 pub const EBADF: i64 = 9;
@@ -20,6 +21,7 @@ pub const EINVAL: i64 = 22;
 pub const EMFILE: i64 = 24;
 pub const ENOTTY: i64 = 25;
 pub const EFBIG: i64 = 27;
+pub const EROFS: i64 = 30;
 pub const ENOSPC: i64 = 28;
 pub const ESPIPE: i64 = 29;
 pub const ENAMETOOLONG: i64 = 36;
@@ -30,6 +32,8 @@ pub const SYS_IOCTL: u64 = 29;
 pub const SYS_UNLINKAT: u64 = 35;
 pub const SYS_FTRUNCATE: u64 = 46;
 pub const SYS_OPENAT: u64 = 56;
+pub const SYS_GETDENTS64: u64 = 61;
+pub const SYS_FACCESSAT: u64 = 48;
 pub const SYS_CLOSE: u64 = 57;
 pub const SYS_LSEEK: u64 = 62;
 pub const SYS_READ: u64 = 63;
@@ -54,6 +58,8 @@ pub const SYS_RT_SIGPROCMASK: u64 = 135;
 pub const SYS_UNAME: u64 = 160;
 pub const SYS_GETCPU: u64 = 168;
 pub const SYS_GETTIMEOFDAY: u64 = 169;
+pub const SYS_NANOSLEEP: u64 = 101;
+pub const SYS_CLOCK_NANOSLEEP: u64 = 115;
 pub const SYS_GETPID: u64 = 172;
 pub const SYS_GETPPID: u64 = 173;
 pub const SYS_GETUID: u64 = 174;
@@ -96,7 +102,14 @@ enum InodeKind {
     DevNull,
     ProcAuxv,
     Directory,
+    /// A file under `--root`, read in full when opened (read-only; freed with its last descriptor)
+    HostFile(Vec<u8>),
+    /// A directory under `--root`: its entries (name, `d_type`), `.` and `..` first, then sorted
+    HostDir(Vec<(String, u8)>),
 }
+
+/// The largest host file `--root` reads into the guest.
+const MAX_HOST_FILE: u64 = 256 << 20;
 
 #[derive(Debug, Clone)]
 struct Inode {
@@ -179,6 +192,8 @@ pub struct Process {
     next_ino: u64,
     rng: u64,
     warned_clone_thread: bool,
+    /// `--root=DIR` (canonical): guest paths outside the scratch area name files under it, read-only
+    host_root: Option<std::path::PathBuf>,
 }
 
 impl Process {
@@ -271,6 +286,7 @@ impl Process {
             next_ino: 10,
             rng: RNG_SEED,
             warned_clone_thread: false,
+            host_root: None,
         }
     }
 
@@ -303,7 +319,8 @@ impl Process {
                     match &inode.kind {
                         InodeKind::DevNull | InodeKind::ProcAuxv => true,
                         InodeKind::Regular(_) => f.flags & O_ACCMODE != O_WRONLY,
-                        InodeKind::Directory => false,
+                        InodeKind::Directory | InodeKind::HostDir(_) => false,
+                        InodeKind::HostFile(_) => true,
                     }
                 } else {
                     false
@@ -322,7 +339,9 @@ impl Process {
                 if let Some(inode) = self.inodes.get(&ino) {
                     match &inode.kind {
                         InodeKind::DevNull => true,
-                        InodeKind::ProcAuxv | InodeKind::Directory => false,
+                        InodeKind::ProcAuxv | InodeKind::Directory | InodeKind::HostFile(_) | InodeKind::HostDir(_) => {
+                            false
+                        }
                         InodeKind::Regular(_) => f.flags & O_ACCMODE != O_RDONLY,
                     }
                 } else {
@@ -385,6 +404,169 @@ impl Process {
             .values()
             .filter(|i| matches!(i.kind, InodeKind::Regular(_)))
             .count()
+    }
+
+    /// `--root=DIR`: expose the host directory `dir` read-only as the guest's file system outside the scratch
+    /// area (`/tmp`, `/var/tmp`, `/dev/null`, `/proc/self/auxv`). Nothing outside `dir` can be reached.
+    pub fn set_host_root(&mut self, dir: &std::path::Path) -> std::io::Result<()> {
+        let canonical = dir.canonicalize()?;
+        if !canonical.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotADirectory,
+                "--root must be a directory",
+            ));
+        }
+        self.host_root = Some(canonical);
+        Ok(())
+    }
+
+    /// The host path of guest path `norm` (normalized, absolute) under `--root`, if it exists there. Symlinks are
+    /// resolved first and anything that resolves outside the root is treated as missing.
+    fn host_path(&self, norm: &str) -> Option<std::path::PathBuf> {
+        resolve_under(self.host_root.as_ref()?, norm)
+    }
+
+    /// `openat` of a path under `--root`: read-only; a directory gets its listing, a file its contents.
+    fn open_host(&mut self, norm: &str, flags: u32) -> i64 {
+        let writes = flags & O_ACCMODE != O_RDONLY || flags & O_TRUNC != 0;
+        let Some(real) = self.host_path(norm) else {
+            return if flags & O_CREAT != 0 { -EROFS } else { -ENOENT };
+        };
+        let Ok(meta) = std::fs::metadata(&real) else {
+            return -ENOENT;
+        };
+        let (kind, mode) = if meta.is_dir() {
+            if writes {
+                return -EISDIR;
+            }
+            let mut entries = vec![(".".to_string(), 4u8), ("..".to_string(), 4u8)];
+            let mut children: Vec<(String, u8)> = std::fs::read_dir(&real)
+                .map(|rd| {
+                    rd.filter_map(Result::ok)
+                        .map(|e| {
+                            let t = e.file_type().ok();
+                            let d_type = match t {
+                                Some(t) if t.is_dir() => 4,
+                                Some(t) if t.is_symlink() => 10,
+                                Some(t) if t.is_file() => 8,
+                                _ => 0,
+                            };
+                            (e.file_name().to_string_lossy().into_owned(), d_type)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            children.sort();
+            entries.extend(children);
+            (InodeKind::HostDir(entries), 0o40555)
+        } else {
+            if writes {
+                return -EROFS;
+            }
+            if flags & O_DIRECTORY != 0 {
+                return -ENOTDIR;
+            }
+            if meta.len() > MAX_HOST_FILE {
+                return -EFBIG;
+            }
+            let Ok(data) = std::fs::read(&real) else { return -EACCES };
+            (InodeKind::HostFile(data), 0o100444)
+        };
+        let ino = self.next_ino;
+        self.next_ino += 1;
+        // nlink 0: no dentry in the scratch area, so the inode goes with its last descriptor
+        self.inodes.insert(
+            ino,
+            Inode {
+                kind,
+                ino,
+                mode,
+                nlink: 0,
+            },
+        );
+        let file = OpenFile {
+            kind: FileKind::Inode(ino),
+            offset: 0,
+            flags,
+            cloexec: flags & O_CLOEXEC != 0,
+        };
+        match self.alloc_fd(file, 0) {
+            Ok(fd) => fd as i64,
+            Err(e) => {
+                self.inodes.remove(&ino);
+                e
+            }
+        }
+    }
+
+    /// `getdents64`: `linux_dirent64` records (`d_ino`, `d_off`, `d_reclen`, `d_type`, name) for a `--root`
+    /// directory, continuing from the descriptor's offset (an entry index).
+    fn sys_getdents64(&mut self, fd: u64, dirp: u64, count: u64, mmu: &mut Memory) -> Outcome {
+        let Ok(fd32) = u32::try_from(fd) else {
+            return Outcome::Return(-EBADF);
+        };
+        let Some(file) = self.files.get_mut(&fd32) else {
+            return Outcome::Return(-EBADF);
+        };
+        let FileKind::Inode(ino) = file.kind else {
+            return Outcome::Return(-ENOTDIR);
+        };
+        let entries = match self.inodes.get(&ino).map(|i| &i.kind) {
+            Some(InodeKind::HostDir(e)) => e,
+            Some(InodeKind::Directory) => {
+                return Outcome::Unimplemented("getdents64 on a scratch-area directory is not implemented".into());
+            }
+            _ => return Outcome::Return(-ENOTDIR),
+        };
+        let mut buf = Vec::new();
+        let mut next = file.offset as usize;
+        while let Some((name, d_type)) = entries.get(next) {
+            let reclen = (19 + name.len() + 1).next_multiple_of(8);
+            if buf.len() + reclen > count as usize {
+                break;
+            }
+            let mut rec = vec![0u8; reclen];
+            rec[0..8].copy_from_slice(&(ino * 4096 + next as u64 + 1).to_le_bytes());
+            rec[8..16].copy_from_slice(&(next as i64 + 1).to_le_bytes());
+            rec[16..18].copy_from_slice(&(reclen as u16).to_le_bytes());
+            rec[18] = *d_type;
+            rec[19..19 + name.len()].copy_from_slice(name.as_bytes());
+            buf.extend_from_slice(&rec);
+            next += 1;
+        }
+        if buf.is_empty() && next < entries.len() {
+            return Outcome::Return(-EINVAL); // the next entry does not fit
+        }
+        if mmu.write_bytes(dirp, &buf).is_err() {
+            return Outcome::Return(-EFAULT);
+        }
+        file.offset = next as u64;
+        Outcome::Return(buf.len() as i64)
+    }
+
+    /// `faccessat`: existence (`F_OK`) and read permission (`R_OK`) on the scratch area and `--root`; `W_OK` under
+    /// `--root` is EROFS and `X_OK` there is EACCES (guests cannot exec).
+    fn sys_faccessat(&self, path_ptr: u64, mode: u64, mmu: &mut Memory) -> i64 {
+        let path_str = match read_path(path_ptr, mmu) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+        let norm = normalize_path(&path_str);
+        if is_allowed_path(&norm) {
+            let known = matches!(norm.as_str(), "/dev/null" | "/proc/self/auxv" | "/tmp" | "/var/tmp")
+                || self.dentries.contains_key(&norm);
+            return if known { 0 } else { -ENOENT };
+        }
+        let Some(real) = self.host_path(&norm) else {
+            return -ENOENT;
+        };
+        if mode & 2 != 0 {
+            return -EROFS;
+        }
+        if mode & 1 != 0 && !real.is_dir() {
+            return -EACCES;
+        }
+        0
     }
 
     /// Fixed virtual time for reproducible single-process experiments. Each successful
@@ -476,11 +658,46 @@ impl Process {
             SYS_READLINKAT => -ENOENT,
             SYS_NEWFSTATAT => self.sys_newfstatat(a[0] as i64, a[1], a[2], a[3] as i32, mmu),
             SYS_FSTAT => self.sys_fstat(a[0], a[1], mmu),
+            SYS_GETDENTS64 => return self.sys_getdents64(a[0], a[1], a[2], mmu),
+            SYS_FACCESSAT | 439 => self.sys_faccessat(a[1], a[2], mmu),
             SYS_SCHED_YIELD => 0,
             SYS_GETTIMEOFDAY => self.sys_gettimeofday(a[0], a[1], mmu),
+            SYS_NANOSLEEP => self.sys_nanosleep(None, 0, a[0], mmu),
+            SYS_CLOCK_NANOSLEEP => self.sys_nanosleep(Some(a[0]), a[1], a[2], mmu),
             SYS_GETPID | SYS_GETTID => PID as i64,
             SYS_GETPPID => 0,
             SYS_GETUID | SYS_GETEUID => UID as i64,
+            // the guest is an unprivileged user: it may "change" to its own ids only (setresuid/setresgid take -1 to
+            // keep one), and it is in no supplementary group
+            146 => {
+                if a[0] == UID {
+                    0
+                } else {
+                    -EPERM
+                }
+            }
+            144 => {
+                if a[0] == GID {
+                    0
+                } else {
+                    -EPERM
+                }
+            }
+            147 | 149 => {
+                let own = if nr == 147 { UID } else { GID };
+                if a[..3].iter().all(|&id| id == own || id as u32 == u32::MAX) {
+                    0
+                } else {
+                    -EPERM
+                }
+            }
+            158 => 0,
+            // no networking: socket(2) fails as for an unsupported address family (musl's user lookup then reads
+            // /etc/passwd, as without nscd)
+            198 => -EAFNOSUPPORT,
+            // sendfile(2) is not offered; EINVAL is what Linux returns for descriptors it cannot splice, and callers
+            // such as busybox then copy with read/write
+            71 => -EINVAL,
             SYS_GETGID | SYS_GETEGID => GID as i64,
             278 => self.sys_getrandom(a[0], a[1], a[2], mmu),
             261 => {
@@ -521,10 +738,12 @@ impl Process {
                 } else {
                     a[0]
                 };
-                if (flags & CLONE_THREAD) != 0 && !self.warned_clone_thread {
+                // threads come through `clone` (the runner's `threads` module takes those before dispatch);
+                // `clone3` is ENOSYS so glibc falls back to `clone`. New processes (fork) are not supported.
+                if (flags & CLONE_THREAD) == 0 && !self.warned_clone_thread {
                     self.warned_clone_thread = true;
                     let msg = format!(
-                        "[run-elf] guest tried to start a thread (clone flags {:#x}); guest threads are not supported, clone returned ENOSYS\n",
+                        "[run-elf] guest tried to start a process (clone flags {:#x}); fork is not supported, clone returned ENOSYS\n",
                         flags
                     );
                     out.write(2, msg.as_bytes());
@@ -547,7 +766,11 @@ impl Process {
         }
         let norm = normalize_path(&path_str);
         if !is_allowed_path(&norm) {
-            return -ENOENT;
+            return if self.host_root.is_some() {
+                self.open_host(&norm, flags)
+            } else {
+                -ENOENT
+            };
         }
         if norm == "/dev/null" {
             let cloexec = flags & O_CLOEXEC != 0;
@@ -723,7 +946,7 @@ impl Process {
                         file.offset += avail as u64;
                         avail as i64
                     }
-                    InodeKind::Regular(data) => {
+                    InodeKind::Regular(data) | InodeKind::HostFile(data) => {
                         let off = file.offset as usize;
                         if off >= data.len() {
                             return 0;
@@ -735,7 +958,7 @@ impl Process {
                         file.offset += avail as u64;
                         avail as i64
                     }
-                    InodeKind::Directory => -EISDIR,
+                    InodeKind::Directory | InodeKind::HostDir(_) => -EISDIR,
                 }
             }
         }
@@ -782,7 +1005,7 @@ impl Process {
                         }
                         avail as i64
                     }
-                    InodeKind::Regular(data) => {
+                    InodeKind::Regular(data) | InodeKind::HostFile(data) => {
                         if off >= data.len() {
                             return 0;
                         }
@@ -792,7 +1015,7 @@ impl Process {
                         }
                         avail as i64
                     }
-                    InodeKind::Directory => -EISDIR,
+                    InodeKind::Directory | InodeKind::HostDir(_) => -EISDIR,
                 }
             }
         }
@@ -855,7 +1078,8 @@ impl Process {
                 match &mut inode.kind {
                     InodeKind::DevNull => count as i64,
                     InodeKind::ProcAuxv => -EACCES,
-                    InodeKind::Directory => -EISDIR,
+                    InodeKind::Directory | InodeKind::HostDir(_) => -EISDIR,
+                    InodeKind::HostFile(_) => -EBADF,
                     InodeKind::Regular(content) => {
                         let write_at = if is_append { content.len() as u64 } else { cur_offset };
                         let Some(new_end) = write_at.checked_add(count) else {
@@ -912,7 +1136,8 @@ impl Process {
                 match &mut inode.kind {
                     InodeKind::DevNull => count as i64,
                     InodeKind::ProcAuxv => -EACCES,
-                    InodeKind::Directory => -EISDIR,
+                    InodeKind::Directory | InodeKind::HostDir(_) => -EISDIR,
+                    InodeKind::HostFile(_) => -EBADF,
                     InodeKind::Regular(content) => {
                         let write_at = offset;
                         let Some(new_end) = write_at.checked_add(count) else {
@@ -956,8 +1181,8 @@ impl Process {
                 match &inode.kind {
                     InodeKind::DevNull => 0,
                     InodeKind::ProcAuxv => self.auxv_data.len() as i64,
-                    InodeKind::Regular(d) => d.len() as i64,
-                    InodeKind::Directory => 4096,
+                    InodeKind::Regular(d) | InodeKind::HostFile(d) => d.len() as i64,
+                    InodeKind::Directory | InodeKind::HostDir(_) => 4096,
                 }
             }
         };
@@ -1189,10 +1414,12 @@ impl Process {
                     InodeKind::ProcAuxv => {
                         self.write_stat(statbuf, 6, 2, 0o100444, 1, 0, self.auxv_data.len() as i64, mmu)
                     }
-                    InodeKind::Regular(d) => {
+                    InodeKind::Regular(d) | InodeKind::HostFile(d) => {
                         self.write_stat(statbuf, 10, ino, inode.mode, inode.nlink, 0, d.len() as i64, mmu)
                     }
-                    InodeKind::Directory => self.write_stat(statbuf, 10, ino, inode.mode, inode.nlink, 0, 4096, mmu),
+                    InodeKind::Directory | InodeKind::HostDir(_) => {
+                        self.write_stat(statbuf, 10, ino, inode.mode, inode.nlink, 0, 4096, mmu)
+                    }
                 }
             }
         }
@@ -1217,7 +1444,15 @@ impl Process {
         }
         let norm = normalize_path(&path_str);
         if !is_allowed_path(&norm) {
-            return -ENOENT;
+            let Some(meta) = self.host_path(&norm).and_then(|p| std::fs::metadata(p).ok()) else {
+                return -ENOENT;
+            };
+            #[cfg(unix)]
+            let ino = std::os::unix::fs::MetadataExt::ino(&meta);
+            #[cfg(not(unix))]
+            let ino = 0;
+            let (mode, nlink) = if meta.is_dir() { (0o40555, 2) } else { (0o100444, 1) };
+            return self.write_stat(statbuf, 11, ino, mode, nlink, 0, meta.len() as i64, mmu);
         }
         if norm == "/dev/null" {
             return self.write_stat(statbuf, 5, 1, 0o20666, 1, 0x0103, 0, mmu);
@@ -1523,11 +1758,13 @@ impl Process {
         base as i64
     }
 
-    fn sys_clock_gettime(&mut self, clk: u64, ts: u64, mmu: &mut Memory) -> i64 {
+    /// The current time of clock `clk` (`CLOCK_REALTIME` 0, `MONOTONIC` 1, the CPU-time clocks 2 and 3,
+    /// `MONOTONIC_RAW` 4, `BOOTTIME` 7) as seconds and nanoseconds, without advancing the deterministic clock.
+    fn clock_now(&self, clk: u64) -> Option<(u64, u64)> {
         if !matches!(clk, 0 | 1 | 2 | 3 | 4 | 7) {
-            return -EINVAL;
+            return None;
         }
-        let (sec, nsec) = if let Some(ticks) = self.deterministic_ticks {
+        Some(if let Some(ticks) = self.deterministic_ticks {
             if matches!(clk, 2 | 3) {
                 (
                     self.retired_instructions / 1_000_000_000,
@@ -1555,6 +1792,12 @@ impl Process {
                 }
                 _ => unreachable!(),
             }
+        })
+    }
+
+    fn sys_clock_gettime(&mut self, clk: u64, ts: u64, mmu: &mut Memory) -> i64 {
+        let Some((sec, nsec)) = self.clock_now(clk) else {
+            return -EINVAL;
         };
         let mut buf = [0u8; 16];
         buf[..8].copy_from_slice(&sec.to_le_bytes());
@@ -1569,6 +1812,38 @@ impl Process {
             }
             0
         }
+    }
+
+    /// `nanosleep(req, rem)` (`clk` None) and `clock_nanosleep(clk, flags, req, rem)`. With `--deterministic`
+    /// the wall and monotonic clocks jump ahead by the sleep (whole milliseconds, rounded up) instead of waiting;
+    /// otherwise the host sleeps. `TIMER_ABSTIME` sleeps until that time on `clk`. Never interrupted, so
+    /// `rem` is left alone.
+    fn sys_nanosleep(&mut self, clk: Option<u64>, flags: u64, req: u64, mmu: &mut Memory) -> i64 {
+        const TIMER_ABSTIME: u64 = 1;
+        let (Ok(sec), Ok(nsec)) = (mmu.read_u64(req), mmu.read_u64(req + 8)) else {
+            return -EFAULT;
+        };
+        if (sec as i64) < 0 || nsec >= 1_000_000_000 {
+            return -EINVAL;
+        }
+        let mut ns = u128::from(sec) * 1_000_000_000 + u128::from(nsec);
+        if let Some(clk) = clk {
+            if matches!(clk, 2 | 3) {
+                return -EINVAL; // sleeping on the calling thread's own CPU-time clock
+            }
+            let Some((now_s, now_ns)) = self.clock_now(clk) else {
+                return -EINVAL;
+            };
+            if flags & TIMER_ABSTIME != 0 {
+                ns = ns.saturating_sub(u128::from(now_s) * 1_000_000_000 + u128::from(now_ns));
+            }
+        }
+        if let Some(ticks) = &mut self.deterministic_ticks {
+            *ticks = ticks.saturating_add(ns.div_ceil(1_000_000) as u64);
+        } else {
+            std::thread::sleep(std::time::Duration::from_nanos(ns.min(u128::from(u64::MAX)) as u64));
+        }
+        0
     }
 
     fn sys_gettimeofday(&mut self, tv: u64, _tz: u64, mmu: &mut Memory) -> i64 {
@@ -1742,6 +2017,20 @@ fn read_path(ptr: u64, mmu: &Memory) -> Result<String, i64> {
         bytes.push(b[0]);
     }
     Err(-ENAMETOOLONG)
+}
+
+/// The host path of normalized guest path `norm` under the canonical `root`, if it exists and resolves (symlinks
+/// included) inside it.
+fn resolve_under(root: &std::path::Path, norm: &str) -> Option<std::path::PathBuf> {
+    let real = root.join(norm.trim_start_matches('/')).canonicalize().ok()?;
+    real.starts_with(root).then_some(real)
+}
+
+/// Reads guest path `path` from under the host directory `root`, with the `--root` sandbox rules.
+pub fn read_under_root(root: &std::path::Path, path: &str) -> std::io::Result<Vec<u8>> {
+    let not_found = || std::io::Error::new(std::io::ErrorKind::NotFound, format!("{path} is not under the root"));
+    let real = resolve_under(&root.canonicalize()?, &normalize_path(path)).ok_or_else(not_found)?;
+    std::fs::read(real)
 }
 
 fn normalize_path(raw: &str) -> String {

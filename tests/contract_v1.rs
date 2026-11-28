@@ -9,6 +9,8 @@
 //!
 //! Programs are tiny NROs and ELFs assembled in this file (header branch to 0x80, one PT_LOAD), plus the in-repo
 //! fixtures. Nothing needs a host window, a sound device or a C compiler.
+// Without the `nro` feature the NRO tests are compiled out, which leaves some of their helpers unused.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -506,6 +508,7 @@ fn check_documents(what: &str, docs: &[(String, &Value)], spec: &Value, baseline
 // ---------------------------------------------------------------------------------------------------------------
 // ounce.run.v1
 
+#[cfg(feature = "nro")]
 #[test]
 fn run_v1_keys_and_json_types_are_pinned() {
     let base = baseline("run-v1-keys.json");
@@ -529,6 +532,7 @@ fn run_v1_keys_and_json_types_are_pinned() {
     }
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn run_v1_exit_code_follows_stop_kind() {
     let base = baseline("run-v1-keys.json");
@@ -570,6 +574,7 @@ fn run_v1_exit_code_follows_stop_kind() {
     assert_eq!(codes, [0, 10, 11, 12, 13, 14, 15, 16, 17].into_iter().collect());
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn run_v1_stop_details_follow_the_stop() {
     let by_name = |name: &str| {
@@ -645,6 +650,7 @@ fn run_v1_stop_details_follow_the_stop() {
 // ---------------------------------------------------------------------------------------------------------------
 // Process exit statuses
 
+#[cfg(feature = "nro")]
 #[test]
 fn run_and_run_nro_process_exit_statuses() {
     for c in cases() {
@@ -652,6 +658,7 @@ fn run_and_run_nro_process_exit_statuses() {
     }
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn run_nro_usage_and_input_errors_are_statuses_1_and_2() {
     let missing = std::env::temp_dir().join(format!("ounce_contract_missing_{}.nro", std::process::id()));
@@ -675,6 +682,7 @@ fn run_nro_usage_and_input_errors_are_statuses_1_and_2() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn run_nro_load_failure_writes_no_report() {
     let dir = scratch("noreport");
@@ -705,6 +713,7 @@ fn run_elf_usage_errors_are_status_2() {
     );
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn trace_diff_exit_statuses_are_0_1_2() {
     let (traces, _) = recorded_traces("status");
@@ -744,6 +753,7 @@ fn diverge_exit_statuses_that_need_no_compiler_are_status_2() {
 // ---------------------------------------------------------------------------------------------------------------
 // Flags: --max-frames --sdmc --timeout --json
 
+#[cfg(feature = "nro")]
 #[test]
 fn max_frames_stops_a_run_after_n_presented_frames_in_both_spellings() {
     for n in [1usize, 3] {
@@ -761,6 +771,7 @@ fn max_frames_stops_a_run_after_n_presented_frames_in_both_spellings() {
     }
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn max_frames_rejects_a_value_that_is_not_a_positive_integer() {
     let dir = scratch("maxbad");
@@ -782,6 +793,7 @@ fn max_frames_rejects_a_value_that_is_not_a_positive_integer() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn sdmc_directory_is_visible_to_the_guest_and_never_modified() {
     let dir = scratch("sdmc");
@@ -823,6 +835,7 @@ fn sdmc_directory_is_visible_to_the_guest_and_never_modified() {
 /// `--timeout` and `--json` are not options of `run` / `run-nro` in ounce-core (the roadmap places them on
 /// `ounce-hb run`). What ounce-core does today: `run` refuses them with status 2, and a program can still receive
 /// them after `--`; `ui --timeout SECS` exists; `--json <path>` is an option of `diverge`, `trace-diff` and `census`.
+#[cfg(feature = "nro")]
 #[test]
 fn timeout_and_json_are_not_run_flags_on_ounce_core() {
     let dir = scratch("dx");
@@ -908,6 +921,7 @@ fn recorded_traces(tag: &str) -> (Vec<PathBuf>, PathBuf) {
     (vec![a, b], dir)
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn trace_v1_keys_and_json_types_are_pinned() {
     let base = baseline("trace-v1-keys.json");
@@ -1008,6 +1022,7 @@ fn trace_v1_keys_and_json_types_are_pinned() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn trace_v1_numbers_are_hex_strings_and_counts_are_integers() {
     let (traces, dir) = recorded_traces("hex");
@@ -1075,6 +1090,7 @@ fn assert_pure_json_stdout(args: &[&str], envs: &[(&str, &str)], needle: &str) {
     );
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn report_json_dash_keeps_guest_output_off_stdout() {
     let elf = fixture("tests/linux-elf/bin/hello.elf");
@@ -1191,6 +1207,7 @@ fn unknown_engine_name_is_a_usage_error_everywhere() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn engine_names_and_aliases_are_the_same_for_run_run_elf_and_fuzz_replay() {
     for (value, tier) in [
@@ -1251,6 +1268,7 @@ fn assert_visible_fallback(cmd: &str, out: &Outcome, requested: &str, expected_r
 }
 
 #[cfg(not(feature = "native-jit"))]
+#[cfg(feature = "nro")]
 #[test]
 fn tier4_without_native_jit_runs_tier3_visibly() {
     for (cmd, out) in run_both_with_cpu("t4", "tier4") {
@@ -1276,6 +1294,7 @@ fn tier4_report_matches_what_ran() {
 }
 
 #[cfg(not(feature = "nce"))]
+#[cfg(feature = "nro")]
 #[test]
 fn native_without_nce_runs_the_interpreter_visibly() {
     let out = run_nro_bytes("nat", &NRO_EXIT, &["--cpu=native"], &[]);
@@ -1295,6 +1314,7 @@ fn native_without_nce_runs_the_interpreter_visibly() {
     );
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn run_without_cpu_flag_executes_on_tier3() {
     // The "[CPU] Block engine: <name>" line names the engine that executes the guest; the report's `tier` must agree.
@@ -1328,6 +1348,7 @@ fn run_without_cpu_flag_executes_on_tier3() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn block_engine_unimplemented_instruction_stop_matches_the_interpreter() {
     // `udf #0` (0x00000000) is unimplemented. Every engine must stop the same way: `unimplemented_insn`, exit code 10,

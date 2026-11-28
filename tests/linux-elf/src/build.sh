@@ -18,8 +18,15 @@ fi
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 for src in "$here"/*.c; do
   name="$(basename "$src" .c)"
+  # most fixtures are static non-PIE; pie, fakeld (a stand-in program interpreter) and dynmain test ET_DYN loading
+  case "$name" in
+    pie) cflags=(-fpie); ldflags=(-pie --no-dynamic-linker) ;;
+    fakeld) cflags=(-fpie -fvisibility=hidden); ldflags=(-shared) ;;
+    dynmain) cflags=(-fpie); ldflags=(-pie --dynamic-linker=/lib/fake-ld.so) ;;
+    *) cflags=(-fno-pic); ldflags=(-static -no-pie) ;;
+  esac
   clang --target=aarch64-linux-gnu -O1 -ffreestanding -fno-builtin -fno-stack-protector \
-    -fno-pic -mgeneral-regs-only -mno-outline-atomics -c "$src" -o "$tmp/$name.o"
-  "${LD[@]}" -static -nostdlib -no-pie -z norelro --build-id=none -e _start -o "$bin/$name.elf" "$tmp/$name.o"
+    "${cflags[@]}" -mgeneral-regs-only -mno-outline-atomics -c "$src" -o "$tmp/$name.o"
+  "${LD[@]}" "${ldflags[@]}" -nostdlib -z norelro --build-id=none -e _start -o "$bin/$name.elf" "$tmp/$name.o"
   echo "built $bin/$name.elf ($(wc -c <"$bin/$name.elf") bytes)"
 done

@@ -1,4 +1,6 @@
 //! `--max-frames` and `--press` on the real binary (fixtures are homebrew built in-repo).
+// Without the `nro` feature the NRO tests are compiled out, which leaves some of their helpers unused.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
 use std::process::{Command, Output};
 
 fn run(args: &[&str]) -> Output {
@@ -14,6 +16,7 @@ fn stdout(o: &Output) -> String {
 
 const INPUT_NRO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/input/input.nro");
 
+#[cfg(feature = "nro")]
 #[test]
 fn press_reaches_the_guest_pad() {
     let o = run(&[
@@ -28,6 +31,7 @@ fn press_reaches_the_guest_pad() {
     assert!(stdout(&o).contains("ounce-input buttons=0x00004001"), "{}", stdout(&o));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn no_press_means_no_buttons() {
     let o = run(&["run", INPUT_NRO, "--present=headless"]);
@@ -35,6 +39,7 @@ fn no_press_means_no_buttons() {
     assert!(stdout(&o).contains("ounce-input buttons=0x00000000"));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn press_after_the_run_never_fires() {
     let o = run(&["run", INPUT_NRO, "--present=headless", "--press", "A@999"]);
@@ -42,6 +47,7 @@ fn press_after_the_run_never_fires() {
     assert!(stdout(&o).contains("ounce-input buttons=0x00000000"));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn bad_press_is_a_usage_error() {
     let o = run(&["run", INPUT_NRO, "--press", "HOME@3"]);
@@ -49,6 +55,7 @@ fn bad_press_is_a_usage_error() {
     assert!(String::from_utf8_lossy(&o.stderr).contains("valid: A, B, X, Y"));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn max_frames_exits_zero_after_n_frames() {
     let o = run(&["gfx", "--present=headless", "--max-frames", "5"]);
@@ -61,6 +68,7 @@ fn max_frames_rejects_zero() {
     assert_eq!(run(&["gfx", "--max-frames", "0"]).status.code(), Some(2));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn help_lists_buttons() {
     let o = run(&["--help"]);

@@ -9,6 +9,10 @@ pub const STACK_TOP: u64 = 0x0000_7fff_0000_0000;
 pub const STACK_SIZE: u64 = 2 * 1024 * 1024;
 /// Anonymous `mmap` allocations are carved upward from here; ELF segments must end below it.
 pub const MMAP_BASE: u64 = 0x0000_4000_0000_0000;
+/// Where a position-independent main program (ET_DYN) is placed.
+pub const PIE_BASE: u64 = 0x0000_0055_5555_0000;
+/// Where its program interpreter (`PT_INTERP`, e.g. `ld-musl-aarch64.so.1`) is placed: below the mmap area.
+pub const INTERP_BASE: u64 = 0x0000_3f00_0000_0000;
 const MAX_LOAD_BYTES: u64 = 1 << 30;
 
 const EM_AARCH64: u16 = 183;
@@ -21,6 +25,7 @@ const PF_X: u32 = 1;
 
 const AT_NULL: u64 = 0;
 const AT_PHDR: u64 = 3;
+const AT_BASE: u64 = 7;
 const AT_PHENT: u64 = 4;
 const AT_PHNUM: u64 = 5;
 const AT_PAGESZ: u64 = 6;
@@ -235,6 +240,12 @@ pub struct Image {
     pub brk_start: u64,
     pub phdr_addr: u64,
     pub phnum: u64,
+    /// Load bias: 0 for ET_EXEC, the base address for ET_DYN (all addresses above include it)
+    pub base: u64,
+    /// `PT_INTERP`: the program interpreter's path, if the program is dynamically linked
+    pub interp: Option<String>,
+    /// `AT_BASE` for the stack: the interpreter's load base (0 without one); set by the runner
+    pub at_base: u64,
     pub phentsize: u64,
     #[allow(dead_code)] // retained for diagnostics and the loader limit report
     pub loaded_bytes: u64,
@@ -270,6 +281,11 @@ pub fn align_up(v: u64) -> u64 {
 /// Mapping limit: the memory model has no per-page permission change, so segment pages are mapped RW,
 /// or RWX when any segment touching the page is executable. Read-only data is not write-protected.
 pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
+    load_at(bytes, mmu, PIE_BASE)
+}
+
+/// `load`, with an ET_DYN image placed at `dyn_base` (ET_EXEC images keep their own addresses).
+pub fn load_at(bytes: &[u8], mmu: &mut Memory, dyn_base: u64) -> Result<Image, ElfError> {
     if bytes.len() < 64 || &bytes[0..4] != b"\x7fELF" {
         return Err(ElfError::NotElf);
     }
@@ -286,16 +302,13 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
             "e_machine {e_machine} is not AArch64 (183)"
         )));
     }
-    match e_type {
-        ET_EXEC => {}
-        ET_DYN => {
-            return Err(ElfError::Unsupported(
-                "ET_DYN (dynamic executable, shared object or static-PIE); link with -static -no-pie".into(),
-            ));
-        }
-        t => return Err(ElfError::Unsupported(format!("e_type {t} is not ET_EXEC"))),
-    }
-    let entry = rd64(bytes, 24)?;
+    let base = match e_type {
+        ET_EXEC => 0,
+        ET_DYN => dyn_base,
+        t => return Err(ElfError::Unsupported(format!("e_type {t} is not ET_EXEC or ET_DYN"))),
+    };
+    let mut interp = None;
+    let entry = rd64(bytes, 24)?.wrapping_add(base);
     let phoff = rd64(bytes, 32)?;
     let phentsize = rd16(bytes, 54)? as u64;
     let phnum = rd16(bytes, 56)? as u64;
@@ -328,12 +341,17 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
         let filesz = rd64(bytes, o + 32)?;
         let memsz = rd64(bytes, o + 40)?;
         match p_type {
-            PT_INTERP => return Err(ElfError::Unsupported("PT_INTERP: dynamically linked executable".into())),
-            PT_DYNAMIC => {
-                return Err(ElfError::Unsupported(
-                    "PT_DYNAMIC: dynamically linked executable".into(),
-                ));
+            PT_INTERP => {
+                let end = offset
+                    .checked_add(filesz)
+                    .filter(|&e| e <= bytes.len() as u64 && filesz <= 4096)
+                    .ok_or_else(|| ElfError::Malformed("PT_INTERP outside the file".into()))?;
+                let raw = &bytes[offset as usize..end as usize];
+                let path = raw.split(|&b| b == 0).next().unwrap_or_default();
+                interp = Some(String::from_utf8_lossy(path).into_owned());
             }
+            // relocation is the interpreter's job (or a static PIE's own startup code)
+            PT_DYNAMIC => {}
             PT_LOAD => {
                 if filesz > memsz {
                     return Err(ElfError::Malformed("PT_LOAD p_filesz > p_memsz".into()));
@@ -344,6 +362,9 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
                 if end_file > bytes.len() as u64 {
                     return Err(ElfError::Malformed("PT_LOAD file range past end of file".into()));
                 }
+                let vaddr = vaddr
+                    .checked_add(base)
+                    .ok_or_else(|| ElfError::Malformed("p_vaddr+base overflow".into()))?;
                 let end = vaddr
                     .checked_add(memsz)
                     .ok_or_else(|| ElfError::Malformed("p_vaddr+p_memsz overflow".into()))?;
@@ -438,6 +459,9 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
         brk_start,
         phdr_addr,
         phnum,
+        base,
+        interp,
+        at_base: 0,
         phentsize,
         loaded_bytes,
         symbols: SymbolTable::parse(bytes),
@@ -493,6 +517,7 @@ pub fn build_stack_with_auxv(
     sp &= !15;
     let auxv: Vec<(u64, u64)> = vec![
         (AT_PHDR, image.phdr_addr),
+        (AT_BASE, image.at_base),
         (AT_PHENT, image.phentsize),
         (AT_PHNUM, image.phnum),
         (AT_PAGESZ, PAGE),

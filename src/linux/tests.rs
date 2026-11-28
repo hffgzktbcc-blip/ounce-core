@@ -5,6 +5,11 @@ use crate::cpu::CpuTier;
 const HELLO: &[u8] = include_bytes!("../../tests/linux-elf/bin/hello.elf");
 const EXITCODE: &[u8] = include_bytes!("../../tests/linux-elf/bin/exitcode.elf");
 const ARGS: &[u8] = include_bytes!("../../tests/linux-elf/bin/args.elf");
+const PIE: &[u8] = include_bytes!("../../tests/linux-elf/bin/pie.elf");
+const FAKELD: &[u8] = include_bytes!("../../tests/linux-elf/bin/fakeld.elf");
+const DYNMAIN: &[u8] = include_bytes!("../../tests/linux-elf/bin/dynmain.elf");
+const READFILE: &[u8] = include_bytes!("../../tests/linux-elf/bin/readfile.elf");
+const THREADS: &[u8] = include_bytes!("../../tests/linux-elf/bin/threads.elf");
 const MEMORY: &[u8] = include_bytes!("../../tests/linux-elf/bin/memory.elf");
 const BADSYS: &[u8] = include_bytes!("../../tests/linux-elf/bin/badsyscall.elf");
 const BASIC_MATH: &[u8] = include_bytes!("../../tests/linux-elf/bin/basic_math.elf");
@@ -309,9 +314,9 @@ fn loader_rejects_bad_inputs() {
         assert!(diagnosis.contains(needle), "{diagnosis}");
     };
     reject(b"not an elf at all", "not an ELF");
-    let mut dynamic = HELLO.to_vec();
-    dynamic[16] = 3; // ET_DYN
-    reject(&dynamic, "ET_DYN");
+    let mut core = HELLO.to_vec();
+    core[16] = 4; // ET_CORE
+    reject(&core, "e_type 4");
     let mut x86 = HELLO.to_vec();
     x86[18] = 62; // EM_X86_64
     reject(&x86, "not AArch64");
@@ -327,7 +332,7 @@ fn loader_rejects_bad_inputs() {
     let mut interp = HELLO.to_vec();
     let phoff = u64::from_le_bytes(interp[32..40].try_into().unwrap()) as usize;
     interp[phoff..phoff + 4].copy_from_slice(&3u32.to_le_bytes());
-    reject(&interp, "PT_INTERP");
+    reject(&interp, "--root");
 }
 
 #[test]
@@ -505,7 +510,10 @@ fn getcpu_reports_cpu_zero_and_node_zero() {
 }
 
 #[test]
-fn clone_and_clone3_return_enosys_and_emit_one_time_thread_warning() {
+fn fork_style_clone_and_clone3_return_enosys_with_one_time_warning() {
+    // Threads are created by the runner (`threads.rs`) before dispatch; what reaches dispatch is a fork-style
+    // clone (no CLONE_THREAD), which stays ENOSYS with one stderr note, and clone3, which is ENOSYS so glibc
+    // falls back to clone.
     use super::syscalls::{CLONE_THREAD, ENOSYS, Outcome, Process, SYS_CLONE, SYS_CLONE3};
     use crate::mmu::{Memory, Permission};
     let mut proc = Process::new(0x1000);
@@ -513,41 +521,33 @@ fn clone_and_clone3_return_enosys_and_emit_one_time_thread_warning() {
     mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
     let mut out = Capture::default();
 
-    // First clone call with CLONE_THREAD writes one-time warning to stderr (fd 2).
-    let flags = 0x7d0f00; // musl pthread_create flags (includes CLONE_THREAD 0x10000)
+    let fork = 0x11; // SIGCHLD only, as fork(2) passes
     assert_eq!(
-        proc.dispatch(SYS_CLONE, [flags, 0x2000, 0, 0, 0, 0], &mut mem, &mut out),
+        proc.dispatch(SYS_CLONE, [fork, 0, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(-ENOSYS)
     );
     let expected_msg = format!(
-        "[run-elf] guest tried to start a thread (clone flags {:#x}); guest threads are not supported, clone returned ENOSYS\n",
-        flags
+        "[run-elf] guest tried to start a process (clone flags {:#x}); fork is not supported, clone returned ENOSYS\n",
+        fork
     );
     assert_eq!(String::from_utf8_lossy(&out.err), expected_msg);
     assert!(out.out.is_empty(), "stdout must remain clean");
-
-    // Second clone call with thread flags returns -ENOSYS but emits no further warning.
     assert_eq!(
-        proc.dispatch(SYS_CLONE, [flags, 0x2000, 0, 0, 0, 0], &mut mem, &mut out),
+        proc.dispatch(SYS_CLONE, [fork, 0, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(-ENOSYS)
     );
     assert_eq!(
         String::from_utf8_lossy(&out.err),
         expected_msg,
-        "stderr should not duplicate the warning"
+        "the note is printed once"
     );
 
-    // clone3 also returns -ENOSYS
     mem.write_u64(0x1000, CLONE_THREAD).unwrap();
     assert_eq!(
         proc.dispatch(SYS_CLONE3, [0x1000, 88, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(-ENOSYS)
     );
-    assert_eq!(
-        String::from_utf8_lossy(&out.err),
-        expected_msg,
-        "already warned, no new warning from clone3"
-    );
+    assert_eq!(String::from_utf8_lossy(&out.err), expected_msg, "clone3 adds no note");
 }
 
 #[test]
@@ -556,13 +556,13 @@ fn single_cpu_and_clone_syscalls_execute_across_all_tiers() {
     // 1. sched_getaffinity(0, 8, sp) -> returns 8, writes mask 1
     // 2. sched_setaffinity(0, 8, sp) -> returns 0
     // 3. getcpu(sp, sp + 4, 0) -> returns 0, writes cpu 0 and node 0
-    // 4. clone(CLONE_THREAD | ..., 0, 0, 0, 0) -> returns -38 (ENOSYS)
+    // 4. clone(CLONE_THREAD, 0, 0, 0, 0) without CLONE_VM/CLONE_SIGHAND -> returns -22 (EINVAL, as on Linux)
     // 5. exit 0 (or exit 42 on any failure)
     let code: [u32; 42] = [
         0xd2800f68, 0xd2800000, 0xd2800101, 0x910003e2, 0xd4000001, 0xf100201f, 0x54000421, 0xf94003e3, 0xf100047f,
         0x540003c1, 0xd2800f48, 0xd2800000, 0xd2800101, 0x910003e2, 0xd4000001, 0xb5000300, 0xd2801508, 0x910003e0,
         0x910013e1, 0xd2800002, 0xd4000001, 0xb5000240, 0xb94003e4, 0x35000204, 0xb94007e5, 0x350001c5, 0xd2801b88,
-        0xd2a00020, 0xd2800001, 0xd2800002, 0xd2800003, 0xd2800004, 0xd2800005, 0xd4000001, 0xb100981f, 0x54000081,
+        0xd2a00020, 0xd2800001, 0xd2800002, 0xd2800003, 0xd2800004, 0xd2800005, 0xd4000001, 0xb100581f, 0x54000081,
         0xd2800ba8, 0xd2800000, 0xd4000001, 0xd2800ba8, 0xd2800540, 0xd4000001,
     ];
     let elf = tiny_elf(&code);
@@ -1590,5 +1590,315 @@ fn getrandom_is_deterministic_validated_and_capped() {
     assert_eq!(
         p.dispatch(278, [0x1000, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(256)
+    );
+}
+
+/// `--root=DIR`: guest paths outside the scratch area name files under DIR, read-only, and nothing outside DIR
+/// (lexical `..` stops at the root; a symlink that leads out is refused).
+#[test]
+#[allow(non_snake_case)]
+fn host_root_exposes_a_read_only_folder_and_nothing_outside_it() {
+    use super::syscalls::{Outcome, Process};
+    use crate::mmu::{Memory, Permission};
+    const AT_FDCWD: u64 = -100i64 as u64;
+    let (OPENAT, READ, LSEEK, PREAD64, NEWFSTATAT, GETDENTS64) = (56u64, 63u64, 62u64, 67u64, 79u64, 61u64);
+    let (O_WRONLY, O_CREAT, O_DIRECTORY) = (1u64, 0o100u64, 0o200000u64);
+    let (ENOENT, EROFS) = (2i64, 30i64);
+    let base = std::env::temp_dir().join(format!("ounce_root_test_{}", std::process::id()));
+    let (root, outside) = (base.join("root"), base.join("outside"));
+    std::fs::create_dir_all(root.join("etc")).unwrap();
+    std::fs::create_dir_all(root.join("data")).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(root.join("etc/motd"), b"hello from the host\n").unwrap();
+    std::fs::write(root.join("data/n.bin"), [1u8, 2, 3, 4, 5]).unwrap();
+    std::fs::write(outside.join("secret"), b"must not be readable").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(outside.join("secret"), root.join("escape")).unwrap();
+
+    let mut mem = Memory::new();
+    mem.map_range(0x10000, 0x10000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    let path = |mem: &mut Memory, p: &str| {
+        mem.write_bytes(0x10000, p.as_bytes()).unwrap();
+        mem.write_bytes(0x10000 + p.len() as u64, &[0]).unwrap();
+        0x10000u64
+    };
+    let mut proc = Process::new(0x1000);
+    let p = path(&mut mem, "/etc/motd");
+    assert_eq!(
+        proc.dispatch(OPENAT, [AT_FDCWD, p, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOENT),
+        "no root: host files stay hidden"
+    );
+
+    proc.set_host_root(&root).unwrap();
+    let open = |proc: &mut Process, mem: &mut Memory, out: &mut Capture, p: &str, flags: u64| {
+        mem.write_bytes(0x10000, p.as_bytes()).unwrap();
+        mem.write_bytes(0x10000 + p.len() as u64, &[0]).unwrap();
+        match proc.dispatch(OPENAT, [AT_FDCWD, 0x10000, flags, 0o644, 0, 0], mem, out) {
+            Outcome::Return(v) => v,
+            other => panic!("{p}: {other:?}"),
+        }
+    };
+    let fd = open(&mut proc, &mut mem, &mut out, "/etc/motd", 0) as u64;
+    assert!(fd >= 3);
+    assert_eq!(
+        proc.dispatch(READ, [fd, 0x11000, 64, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(20)
+    );
+    let mut got = [0u8; 20];
+    mem.read_bytes(0x11000, &mut got).unwrap();
+    assert_eq!(&got, b"hello from the host\n");
+    assert_eq!(
+        proc.dispatch(LSEEK, [fd, 0, 2, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(20),
+        "SEEK_END"
+    );
+    assert_eq!(
+        proc.dispatch(PREAD64, [fd, 0x11000, 4, 6, 0, 0], &mut mem, &mut out),
+        Outcome::Return(4)
+    );
+    mem.read_bytes(0x11000, &mut got[..4]).unwrap();
+    assert_eq!(&got[..4], b"from");
+    // relative to the root (the guest's working directory is /), and `..` cannot climb above it
+    for p in ["etc/motd", "/etc/../etc/motd", "/../../../etc/motd"] {
+        assert!(open(&mut proc, &mut mem, &mut out, p, 0) >= 3, "{p}");
+    }
+    // read-only, nothing created, nothing outside, nothing missing
+    assert_eq!(open(&mut proc, &mut mem, &mut out, "/etc/motd", O_WRONLY), -EROFS);
+    assert_eq!(
+        open(&mut proc, &mut mem, &mut out, "/etc/new", O_WRONLY | O_CREAT),
+        -EROFS
+    );
+    assert_eq!(open(&mut proc, &mut mem, &mut out, "/nope", 0), -ENOENT);
+    #[cfg(unix)]
+    assert_eq!(
+        open(&mut proc, &mut mem, &mut out, "/escape", 0),
+        -ENOENT,
+        "a symlink out of the root is refused"
+    );
+    // stat by path: a 5-byte regular file and a directory
+    let p = path(&mut mem, "/data/n.bin");
+    assert_eq!(
+        proc.dispatch(NEWFSTATAT, [AT_FDCWD, p, 0x12000, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        (
+            mem.read_u32(0x12010).unwrap() & 0o170000,
+            mem.read_u64(0x12030).unwrap()
+        ),
+        (0o100000, 5)
+    );
+    let p = path(&mut mem, "/data");
+    assert_eq!(
+        proc.dispatch(NEWFSTATAT, [AT_FDCWD, p, 0x12000, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(mem.read_u32(0x12010).unwrap() & 0o170000, 0o040000);
+    // getdents64 lists the directory: linux_dirent64 records (d_ino, d_off, d_reclen, d_type, name)
+    let dfd = open(&mut proc, &mut mem, &mut out, "/data", O_DIRECTORY) as u64;
+    let Outcome::Return(n) = proc.dispatch(GETDENTS64, [dfd, 0x13000, 4096, 0, 0, 0], &mut mem, &mut out) else {
+        panic!()
+    };
+    let mut names = Vec::new();
+    let mut off = 0u64;
+    while off < n as u64 {
+        let reclen = mem.read_u16(0x13000 + off + 16).unwrap() as u64;
+        let mut name = Vec::new();
+        let mut i = 19;
+        while let Ok(c) = mem.read_u8(0x13000 + off + i) {
+            if c == 0 {
+                break;
+            }
+            name.push(c);
+            i += 1;
+        }
+        names.push(String::from_utf8(name).unwrap());
+        off += reclen;
+    }
+    names.sort();
+    assert_eq!(names, [".", "..", "n.bin"]);
+    assert_eq!(
+        proc.dispatch(GETDENTS64, [dfd, 0x13000, 4096, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0),
+        "then end of directory"
+    );
+    // the scratch area is unchanged: /tmp stays writable
+    assert!(open(&mut proc, &mut mem, &mut out, "/tmp/x", O_WRONLY | O_CREAT) >= 3);
+    std::fs::remove_dir_all(&base).unwrap();
+}
+
+/// `Options::root` reaches the guest: a program reads a host file by its guest path, on every engine.
+#[test]
+fn run_elf_root_option_lets_a_guest_read_host_files() {
+    let dir = std::env::temp_dir().join(format!("ounce_readfile_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("conf")).unwrap();
+    std::fs::write(dir.join("conf/app.cfg"), "answer = 42\n").unwrap();
+    for tier in TIERS {
+        let mut cap = Capture::default();
+        let opts = Options {
+            tier,
+            root: Some(dir.clone()),
+            ..Options::default()
+        };
+        let argv = ["readfile".to_string(), "/conf/app.cfg".to_string()];
+        let r = run(READFILE, &argv, &opts, &mut cap, &mut |_| {});
+        assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
+        assert_eq!(String::from_utf8_lossy(&cap.out), "answer = 42\n");
+    }
+    // without a root the same path does not exist
+    let (r, out) = go(READFILE, &["readfile", "/conf/app.cfg"], CpuTier::Tier3);
+    assert_eq!((r.stop, out.as_str()), (Stop::Exited(1), "open failed: -2\n"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A static PIE (ET_DYN without PT_INTERP) is placed at a load base and runs there.
+#[test]
+fn pie_executables_load_at_a_base_address() {
+    for t in TIERS {
+        let (r, out) = go(PIE, &["pie"], t);
+        assert_eq!(r.stop, Stop::Exited(0), "{t:?}: {r:?}");
+        assert_eq!(out, "pie runs at its load base\n");
+    }
+}
+
+/// PT_INTERP: the interpreter comes from `--root`, runs first at its own base with AT_BASE, AT_ENTRY and AT_PHDR
+/// set, and jumps to the main program, as ld.so does.
+#[test]
+fn an_interpreter_from_the_root_starts_first_and_jumps_to_main() {
+    let dir = std::env::temp_dir().join(format!("ounce_interp_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("lib")).unwrap();
+    std::fs::write(dir.join("lib/fake-ld.so"), FAKELD).unwrap();
+    for tier in TIERS {
+        let mut cap = Capture::default();
+        let opts = Options {
+            tier,
+            root: Some(dir.clone()),
+            ..Options::default()
+        };
+        let r = run(DYNMAIN, &["dynmain".to_string()], &opts, &mut cap, &mut |_| {});
+        assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&cap.out),
+            "ld: running at AT_BASE\nld: AT_ENTRY and AT_PHDR set\nmain: reached through the interpreter\n"
+        );
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Without `--root` a dynamic executable cannot be started; the diagnosis names the interpreter it needs.
+#[test]
+fn a_dynamic_executable_without_root_names_its_interpreter() {
+    let (r, _) = go(DYNMAIN, &["dynmain"], CpuTier::Tier3);
+    let Stop::Failed { diagnosis, status } = r.stop else {
+        panic!("{r:?}")
+    };
+    assert_eq!(status, 72);
+    assert!(
+        diagnosis.contains("/lib/fake-ld.so") && diagnosis.contains("--root"),
+        "{diagnosis}"
+    );
+}
+
+/// The guest is an unprivileged user with no network: it may only "change" to its own ids, it has no supplementary
+/// groups, `socket` fails as for an unsupported family, and `sendfile` is EINVAL so callers copy with read/write.
+#[test]
+fn identity_socket_and_sendfile_answers() {
+    use super::syscalls::{EAFNOSUPPORT, EINVAL, EPERM, GID, Outcome, Process, UID};
+    use crate::mmu::Memory;
+    let (mut proc, mut mem, mut out) = (Process::new(0x1000), Memory::new(), Capture::default());
+    let mut call = |nr: u64, a: [u64; 6]| proc.dispatch(nr, a, &mut mem, &mut out);
+    let keep = u32::MAX as u64;
+    assert_eq!(call(146, [UID, 0, 0, 0, 0, 0]), Outcome::Return(0), "setuid to self");
+    assert_eq!(call(146, [0, 0, 0, 0, 0, 0]), Outcome::Return(-EPERM), "setuid(0)");
+    assert_eq!(call(144, [GID, 0, 0, 0, 0, 0]), Outcome::Return(0), "setgid to self");
+    assert_eq!(
+        call(147, [keep, UID, keep, 0, 0, 0]),
+        Outcome::Return(0),
+        "setresuid keeping two"
+    );
+    assert_eq!(
+        call(149, [GID, 0, GID, 0, 0, 0]),
+        Outcome::Return(-EPERM),
+        "setresgid to root"
+    );
+    assert_eq!(call(158, [0, 0, 0, 0, 0, 0]), Outcome::Return(0), "getgroups: none");
+    assert_eq!(
+        call(198, [1, 0x80001, 0, 0, 0, 0]),
+        Outcome::Return(-EAFNOSUPPORT),
+        "socket(AF_UNIX)"
+    );
+    assert_eq!(call(71, [1, 3, 0, 1 << 24, 0, 0]), Outcome::Return(-EINVAL), "sendfile");
+}
+
+/// Two guest threads from a raw `clone` (musl's pthread flags plus CLONE_CHILD_SETTID): futex hand-off, 200,000
+/// racing LDXR/STXR increments, TLS and gettid per thread, and a join through CLONE_CHILD_CLEARTID. The expected
+/// output is what the same ELF prints under `qemu-aarch64` on Linux.
+#[test]
+fn guest_threads_share_memory_block_on_futexes_and_join() {
+    let want = "distinct tids\nparent settid ok\nwait on a changed word: EAGAIN\njoined\ncounter=200000\ntls ok\n\
+                gettid ok\nwake with no waiters: 0\n";
+    for t in TIERS {
+        let (r, out) = go(THREADS, &["threads"], t);
+        assert_eq!(r.stop, Stop::Exited(0), "{t:?}: {r:?}\n{out}");
+        assert_eq!(out, want, "{t:?}");
+    }
+}
+
+/// A futex wait that no thread can ever wake hangs on Linux; the runner stops it with a diagnosis instead.
+#[test]
+fn futex_wait_with_no_thread_left_to_wake_it_is_a_diagnosed_deadlock() {
+    // ldr w2, [sp]; mov x0, sp; mov x1, #FUTEX_WAIT_PRIVATE; mov x8, #SYS_futex; svc #0
+    let elf = tiny_elf(&[0xB940_03E2, 0x9100_03E0, 0xD280_1001, 0xD280_0C48, 0xD400_0001]);
+    for t in TIERS {
+        let (r, _) = go(&elf, &["deadlock"], t);
+        let Stop::Failed { diagnosis, .. } = r.stop else {
+            panic!("expected a diagnosed failure: {r:?}")
+        };
+        assert!(diagnosis.contains("deadlock"), "{t:?}: {diagnosis}");
+    }
+}
+
+#[test]
+fn nanosleep_moves_the_deterministic_clock_instead_of_waiting() {
+    use super::syscalls::{EINVAL, Outcome, Process, SYS_CLOCK_NANOSLEEP, SYS_NANOSLEEP};
+    use crate::mmu::{Memory, Permission};
+    const SYS_CLOCK_GETTIME: u64 = 113;
+    let mut proc = Process::new_deterministic(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    let mut now = |proc: &mut Process, mem: &mut Memory| {
+        assert_eq!(
+            proc.dispatch(SYS_CLOCK_GETTIME, [1, 0x1100, 0, 0, 0, 0], mem, &mut out),
+            Outcome::Return(0)
+        );
+        mem.read_u64(0x1100).unwrap() * 1_000_000_000 + mem.read_u64(0x1108).unwrap()
+    };
+    let before = now(&mut proc, &mut mem);
+    // 1.5 s: the monotonic clock jumps by at least that much, with no host wait
+    mem.write_u64(0x1000, 1).unwrap();
+    mem.write_u64(0x1008, 500_000_000).unwrap();
+    let mut out2 = Capture::default();
+    assert_eq!(
+        proc.dispatch(SYS_NANOSLEEP, [0x1000, 0, 0, 0, 0, 0], &mut mem, &mut out2),
+        Outcome::Return(0)
+    );
+    let after = now(&mut proc, &mut mem);
+    assert!(after - before >= 1_500_000_000, "{before} -> {after}");
+    // TIMER_ABSTIME in the past returns at once; a tv_nsec of 10^9 is EINVAL
+    mem.write_u64(0x1000, 0).unwrap();
+    mem.write_u64(0x1008, 0).unwrap();
+    assert_eq!(
+        proc.dispatch(SYS_CLOCK_NANOSLEEP, [1, 1, 0x1000, 0, 0, 0], &mut mem, &mut out2),
+        Outcome::Return(0)
+    );
+    let past = now(&mut proc, &mut mem);
+    assert!(past - after < 10_000_000, "an absolute time in the past does not sleep");
+    mem.write_u64(0x1008, 1_000_000_000).unwrap();
+    assert_eq!(
+        proc.dispatch(SYS_NANOSLEEP, [0x1000, 0, 0, 0, 0, 0], &mut mem, &mut out2),
+        Outcome::Return(-EINVAL)
     );
 }
