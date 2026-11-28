@@ -6,6 +6,7 @@
 //   cc -O1 -o fuzz_host fuzz_host.c && ./fuzz_host --seed 1 --count 150000 | ounce-core fuzz-replay -
 //
 // Trace lines (hex, space separated):
+//   F missing=<csv>                            optional header when host lacks bf16 and/or i8mm
 //   U <word>                                   host raised SIGILL (UNDEFINED encoding)
 //   T <word> <nzcv_in> <31 x> <32 v128> => <nzcv_out> <fpsr_out> <31 x> <32 v128>
 #include <setjmp.h>

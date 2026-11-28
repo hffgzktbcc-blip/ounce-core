@@ -2,7 +2,8 @@
 //! `docs/verify/insn-fuzzer/fuzz_host.c` (real Apple Silicon results) in the Tier-3 interpreter
 //! (`Cpu::step`) and compares every X register, V register, NZCV and FPSR.
 //!
-//! Trace lines (hex): `U <word>` (host raised SIGILL) or
+//! Trace lines (hex): `F missing=<features>` (optional host-missing ISA extensions, e.g. `bf16,i8mm`),
+//! `U <word>` (host raised SIGILL), or
 //! `T <word> <nzcv_in> <31 x> <32 v> => <nzcv_out> <fpsr_out> <31 x> <32 v>`.
 //! `TF <fpcr> <word> ...` is the same case run under that FPCR value (`T` means FPCR 0).
 //!
@@ -1487,5 +1488,16 @@ mod tests {
         std::fs::write(&bad_path, "F missing=bf16,i8mm\nU 4e8794ce\n").unwrap();
         assert_eq!(run(&[bad_path.to_str().unwrap().to_string()]), 1);
         std::fs::remove_file(&bad_path).unwrap();
+
+        // Partial header (bf16 only) must still fail on an i8mm U word (exit 1), and an F-only trace is empty (exit 2)
+        let partial_path = dir.join(format!("ounce_fuzz_missing_partial_{pid}.trace"));
+        std::fs::write(&partial_path, "F missing=bf16\nU 4e879cce\n").unwrap();
+        assert_eq!(run(&[partial_path.to_str().unwrap().to_string()]), 1);
+        std::fs::remove_file(&partial_path).unwrap();
+
+        let empty_f_path = dir.join(format!("ounce_fuzz_missing_empty_{pid}.trace"));
+        std::fs::write(&empty_f_path, "F missing=bf16,i8mm\n").unwrap();
+        assert_eq!(run(&[empty_f_path.to_str().unwrap().to_string()]), 2);
+        std::fs::remove_file(&empty_f_path).unwrap();
     }
 }
