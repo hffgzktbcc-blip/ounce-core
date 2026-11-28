@@ -1,0 +1,66 @@
+name: Nightly fuzz watchdog
+
+# A scheduled nightly fuzz run can end with its job cancelled before any step started (no runner was
+# ever assigned), so nothing was fuzzed and nothing was reported. This workflow looks at each finished
+# scheduled run. If the fuzz job never started, it re-dispatches the fuzz once for the same seed and
+# reports it through the same `nightly-fuzz` issue path that the fuzz job uses.
+#
+# No loop: only runs triggered by `schedule` are examined, and the re-dispatched run has the event
+# `workflow_dispatch`, so a second failure is never retried again.
+on:
+  workflow_run:
+    workflows: ['Nightly instruction fuzz']
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  watchdog:
+    name: Retry a nightly fuzz that never started
+    if: >-
+      github.event.workflow_run.event == 'schedule' &&
+      github.event.workflow_run.run_attempt == 1 &&
+      github.event.workflow_run.conclusion != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write # re-dispatch the fuzz workflow
+      issues: write  # same issue path as the fuzz job
+    steps:
+      - name: Re-dispatch once if the fuzz job never started
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_CREATED_AT: ${{ github.event.workflow_run.created_at }}
+          REF: ${{ github.event.repository.default_branch }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          # Jobs that were cancelled (or skipped) without a single step having run.
+          never_started=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID/jobs" --paginate \
+            --jq '[.jobs[] | select((.conclusion == "cancelled" or .conclusion == "skipped") and ((.steps | length) == 0))] | length' \
+            | awk '{s+=$1} END {print s+0}')
+          if [ "$never_started" -eq 0 ]; then
+            echo "The fuzz job started, so the fuzz job reports its own failures. Nothing to do."
+            exit 0
+          fi
+          # Same seed the cancelled run would have drawn: the UTC date it was created.
+          seed=$(date -u -d "$RUN_CREATED_AT" +%Y%m%d)
+          case "$seed" in *[!0-9]*|'') echo "bad seed"; exit 2;; esac
+          echo "Run $RUN_ID never started a step. Re-dispatching once with seed $seed."
+          gh workflow run nightly-fuzz.yml --ref "$REF" -f seed="$seed"
+
+          gh label create nightly-fuzz --color d93f0b --description "Found by the nightly instruction fuzz" 2>/dev/null || true
+          existing=$(gh issue list --label nightly-fuzz --state open --json number --jq '.[0].number // empty')
+          body="The scheduled nightly fuzz did not run.
+
+          - Seed: \`$seed\`
+          - Run: $RUN_URL (its job was cancelled before any step started)
+          - Action taken: the fuzz was re-dispatched once with the same seed. If that run fails, its own report follows. It is not retried again."
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "Nightly fuzz did not run (seed $seed)" --label nightly-fuzz --body "$body"
+          fi
