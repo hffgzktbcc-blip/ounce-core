@@ -1837,6 +1837,69 @@ fn guest_threads_share_memory_block_on_futexes_and_join() {
     }
 }
 
+/// `statfs`/`fstatfs` fill arm64's 120-byte `struct statfs`: the scratch area is a tmpfs with its own limits and
+/// live free space, `--root` a read-only file system of unknown type with no free space, `/proc/self/auxv` procfs
+/// and standard output a devpts terminal.
+#[test]
+fn statfs_reports_scratch_limits_and_a_read_only_root() {
+    use super::syscalls::{EBADF, EFAULT, ENOENT, Outcome, Process, SYS_FSTATFS, SYS_STATFS};
+    use crate::mmu::{Memory, Permission};
+    const AT_FDCWD: u64 = -100i64 as u64;
+    let base = std::env::temp_dir().join(format!("ounce_statfs_test_{}", std::process::id()));
+    std::fs::create_dir_all(base.join("etc")).unwrap();
+    std::fs::write(base.join("etc/hostname"), b"guest\n").unwrap();
+    let mut proc = Process::new(0x1000);
+    proc.set_host_root(&base).unwrap();
+    let mut mem = Memory::new();
+    mem.map_range(0x10000, 0x2000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    let mut call = |nr: u64, a: [u64; 6], mem: &mut Memory| match proc.dispatch(nr, a, mem, &mut out) {
+        Outcome::Return(v) => v,
+        other => panic!("{nr}: {other:?}"),
+    };
+    let path = |mem: &mut Memory, p: &str| {
+        mem.write_bytes(0x10000, p.as_bytes()).unwrap();
+        mem.write_bytes(0x10000 + p.len() as u64, &[0]).unwrap();
+        0x10000
+    };
+    let words = |mem: &Memory| {
+        (0..15)
+            .map(|i| mem.read_u64(0x11000 + 8 * i).unwrap())
+            .collect::<Vec<_>>()
+    };
+    let p = path(&mut mem, "/tmp");
+    assert_eq!(call(SYS_STATFS, [p, 0x11000, 0, 0, 0, 0], &mut mem), 0);
+    // f_type f_bsize f_blocks f_bfree f_bavail f_files f_ffree f_fsid f_namelen f_frsize f_flags (ST_VALID|NOSUID|NODEV)
+    assert_eq!(
+        &words(&mem)[..11],
+        &[0x0102_1994, 4096, 16384, 16384, 16384, 64, 64, 0, 255, 4096, 0x26]
+    );
+    // a 5000-byte scratch file takes two blocks and one of the 64 files
+    let p = path(&mut mem, "/tmp/f.bin");
+    let fd = call(56, [AT_FDCWD, p, 0o102, 0o644, 0, 0], &mut mem) as u64;
+    assert_eq!(call(64, [fd, 0x10800, 5000, 0, 0, 0], &mut mem), 5000);
+    assert_eq!(call(SYS_FSTATFS, [fd, 0x11000, 0, 0, 0, 0], &mut mem), 0);
+    assert_eq!(&words(&mem)[2..7], &[16384, 16382, 16382, 64, 63]);
+    // --root: unknown type (0), ST_VALID|ST_RDONLY|ST_NOSUID|ST_NODEV, nothing free
+    let p = path(&mut mem, "/etc/hostname");
+    assert_eq!(call(SYS_STATFS, [p, 0x11000, 0, 0, 0, 0], &mut mem), 0);
+    assert_eq!(&words(&mem)[..11], &[0, 4096, 0, 0, 0, 0, 0, 0, 255, 4096, 0x27]);
+    let hfd = call(56, [AT_FDCWD, p, 0, 0, 0, 0], &mut mem) as u64;
+    assert_eq!(call(SYS_FSTATFS, [hfd, 0x11000, 0, 0, 0, 0], &mut mem), 0);
+    assert_eq!(words(&mem)[10], 0x27);
+    let p = path(&mut mem, "/proc/self/auxv");
+    assert_eq!(call(SYS_STATFS, [p, 0x11000, 0, 0, 0, 0], &mut mem), 0);
+    assert_eq!(words(&mem)[0], 0x9fa0);
+    assert_eq!(call(SYS_FSTATFS, [1, 0x11000, 0, 0, 0, 0], &mut mem), 0);
+    assert_eq!(words(&mem)[0], 0x1cd1);
+    // errors: a missing path, a closed descriptor, an unmapped buffer
+    let p = path(&mut mem, "/etc/missing");
+    assert_eq!(call(SYS_STATFS, [p, 0x11000, 0, 0, 0, 0], &mut mem), -ENOENT);
+    assert_eq!(call(SYS_FSTATFS, [77, 0x11000, 0, 0, 0, 0], &mut mem), -EBADF);
+    assert_eq!(call(SYS_FSTATFS, [fd, 0x9000_0000, 0, 0, 0, 0], &mut mem), -EFAULT);
+    std::fs::remove_dir_all(&base).unwrap();
+}
+
 /// A futex wait that no thread can ever wake hangs on Linux; the runner stops it with a diagnosis instead.
 #[test]
 fn futex_wait_with_no_thread_left_to_wake_it_is_a_diagnosed_deadlock() {
