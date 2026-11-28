@@ -100,8 +100,7 @@ runner = "ounce-core run-elf --"
 ```
 
 On macOS the default flags fail to link (Apple's linker does not understand the GNU options
-rustc passes), and `ounce-core` rejects static-PIE (`ET_DYN`). Link with `rust-lld` and a
-static, non-PIE layout:
+rustc passes). Link with `rust-lld` and a static, non-PIE layout (the tested setup):
 
 ```sh
 RUSTFLAGS="-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=static" \
