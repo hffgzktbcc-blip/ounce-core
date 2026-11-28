@@ -1589,7 +1589,7 @@ fn getrandom_is_deterministic_validated_and_capped() {
 #[test]
 #[allow(non_snake_case)]
 fn host_root_exposes_a_read_only_folder_and_nothing_outside_it() {
-    use super::syscalls::{Outcome, Process};
+    use super::syscalls::{EINVAL, EISDIR, ENOTDIR, Outcome, Process};
     use crate::mmu::{Memory, Permission};
     const AT_FDCWD: u64 = -100i64 as u64;
     let (OPENAT, READ, LSEEK, PREAD64, NEWFSTATAT, GETDENTS64) = (56u64, 63u64, 62u64, 67u64, 79u64, 61u64);
@@ -1633,8 +1633,26 @@ fn host_root_exposes_a_read_only_folder_and_nothing_outside_it() {
     };
     let fd = open(&mut proc, &mut mem, &mut out, "/etc/motd", 0) as u64;
     assert!(fd >= 3);
-    // arm64 O_DIRECTORY (0o40000) on a file is ENOTDIR; 0o200000 is arm64's O_DIRECT, which opens it
-    assert_eq!(open(&mut proc, &mut mem, &mut out, "/etc/motd", O_DIRECTORY), -20);
+    // arm64 O_DIRECTORY (0o40000) on a file is ENOTDIR (even with O_WRONLY); 0o200000 is arm64's O_DIRECT, which opens it
+    assert_eq!(open(&mut proc, &mut mem, &mut out, "/etc/motd", O_DIRECTORY), -ENOTDIR);
+    assert_eq!(
+        open(&mut proc, &mut mem, &mut out, "/etc/motd", O_WRONLY | O_DIRECTORY),
+        -ENOTDIR
+    );
+    assert_eq!(
+        open(
+            &mut proc,
+            &mut mem,
+            &mut out,
+            "/etc/new",
+            O_WRONLY | O_CREAT | O_DIRECTORY
+        ),
+        -EINVAL
+    );
+    assert_eq!(
+        open(&mut proc, &mut mem, &mut out, "/data", O_WRONLY | O_DIRECTORY),
+        -EISDIR
+    );
     assert!(open(&mut proc, &mut mem, &mut out, "/etc/motd", 0o200000) >= 3);
     assert_eq!(
         proc.dispatch(READ, [fd, 0x11000, 64, 0, 0, 0], &mut mem, &mut out),
@@ -1848,7 +1866,8 @@ fn open_with_o_directory_matches_linux() {
     use super::syscalls::{EINVAL, EISDIR, ENOTDIR, Outcome, Process};
     use crate::mmu::{Memory, Permission};
     const AT_FDCWD: u64 = -100i64 as u64;
-    let (O_WRONLY, O_RDWR, O_CREAT, O_DIRECTORY, O_DIRECT) = (1u64, 2u64, 0o100u64, 0o40000u64, 0o200000u64);
+    let (O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_DIRECTORY, O_DIRECT) =
+        (1u64, 2u64, 0o100u64, 0o1000u64, 0o40000u64, 0o200000u64);
     let mut proc = Process::new(0x1000);
     let mut mem = Memory::new();
     mem.map_range(0x10000, 0x1000, Permission::READ_WRITE);
@@ -1870,6 +1889,8 @@ fn open_with_o_directory_matches_linux() {
     assert!(open("/tmp", O_DIRECTORY) >= 3);
     assert_eq!(open("/tmp", O_WRONLY | O_DIRECTORY), -EISDIR);
     assert_eq!(open("/tmp", O_WRONLY), -EISDIR);
+    assert_eq!(open("/tmp", O_TRUNC), -EISDIR);
+    assert_eq!(open("/tmp", O_TRUNC | O_DIRECTORY), -EISDIR);
     assert!(open("/tmp", 0) >= 3);
 }
 

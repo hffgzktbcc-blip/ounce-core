@@ -14,7 +14,6 @@ pub const ENOMEM: i64 = 12;
 pub const EACCES: i64 = 13;
 pub const EFAULT: i64 = 14;
 pub const EEXIST: i64 = 17;
-#[allow(dead_code)]
 pub const ENOTDIR: i64 = 20;
 pub const EISDIR: i64 = 21;
 pub const EINVAL: i64 = 22;
@@ -461,11 +460,11 @@ impl Process {
             entries.extend(children);
             (InodeKind::HostDir(entries), 0o40555)
         } else {
-            if writes {
-                return -EROFS;
-            }
             if flags & O_DIRECTORY != 0 {
                 return -ENOTDIR;
+            }
+            if writes {
+                return -EROFS;
             }
             if meta.len() > MAX_HOST_FILE {
                 return -EFBIG;
@@ -818,7 +817,7 @@ impl Process {
             };
         }
         if norm == "/tmp" || norm == "/var/tmp" {
-            if flags & O_ACCMODE != O_RDONLY {
+            if flags & O_ACCMODE != O_RDONLY || flags & O_TRUNC != 0 {
                 return -EISDIR;
             }
             let cloexec = flags & O_CLOEXEC != 0;
