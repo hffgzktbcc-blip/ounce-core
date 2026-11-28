@@ -37,6 +37,11 @@ fn go(elf: &[u8], args: &[&str], tier: CpuTier) -> (Report, String) {
     (r, String::from_utf8_lossy(&cap.out).into_owned())
 }
 
+/// Guest stdout is LF; `include_str!` of a `*.expected` fixture can be CRLF on a Windows checkout.
+fn normalize_newlines(s: &str) -> String {
+    s.replace("\r\n", "\n")
+}
+
 const TIERS: [CpuTier; 3] = [CpuTier::Interpreter, CpuTier::Tier3, CpuTier::Tier4];
 
 #[test]
@@ -1182,7 +1187,11 @@ fn hwcap_instructions_match_native_known_answers_on_every_tier() {
     for tier in TIERS {
         let (r, out) = go(elf, &["hwcap_kat"], tier);
         assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
-        assert_eq!(out, expected, "{tier:?} results differ from native hardware");
+        assert_eq!(
+            normalize_newlines(&out),
+            normalize_newlines(expected),
+            "{tier:?} results differ from native hardware"
+        );
     }
 }
 
@@ -1196,7 +1205,11 @@ fn exclusive_pairs_and_lse_match_native_known_answers_on_every_tier() {
     for tier in TIERS {
         let (r, out) = go(elf, &["lse_kat"], tier);
         assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
-        assert_eq!(out, expected, "{tier:?} results differ from native hardware");
+        assert_eq!(
+            normalize_newlines(&out),
+            normalize_newlines(expected),
+            "{tier:?} results differ from native hardware"
+        );
     }
 }
 
@@ -1250,7 +1263,11 @@ fn crypto_extensions_match_native_known_answers_on_every_tier() {
     for tier in TIERS {
         let (r, out) = go(elf, &["crypto_kat"], tier);
         assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
-        assert_eq!(out, expected, "{tier:?} results differ from native hardware");
+        assert_eq!(
+            normalize_newlines(&out),
+            normalize_newlines(expected),
+            "{tier:?} results differ from native hardware"
+        );
     }
 }
 
