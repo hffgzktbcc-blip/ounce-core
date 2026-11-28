@@ -33,7 +33,7 @@ docs/verify/integer-vector/run_engines.sh X.nro WORKDIR
 ```
 
 ## Not covered
-- The cumulative saturation flag (`FPSR.QC`) is not modelled: saturating ops produce correct values but QC is never set. All saturation goes through `simd::saturate` (returns the value and a "saturated" bool) called from `simd::shift_ext`; wiring QC means collecting that bool there.
+- The cumulative saturation flag (`FPSR.QC`) was not modelled when this check was made (8 Nov 2026); saturating ops produced correct values but never set QC. *(Update 28 Nov 2026: QC is modelled and compared against hardware; see [`../qc-flag/`](../qc-flag/README.md) and [`../insn-fuzzer/`](../insn-fuzzer/README.md).)* The wiring note that follows describes the 8 Nov code: All saturation goes through `simd::saturate` (returns the value and a "saturated" bool) called from `simd::shift_ext`; wiring QC means collecting that bool there.
 - Not tested by the differential: `SQXTN/SQSHRN` etc. with the `2` form on every size, scalar `SQSHL` register forms, by-element forms, `SQRSHL/UQRSHL/SQSHL` (register), `SQABS/SQNEG`, `SUQADD/USQADD`, `UQADD/SQADD` etc., `SHLL/SHLL2` (shift by lane size), `USHLL`/`SSHLL` fixed-point corner cases beyond existing tests.
 - Vector `FCVTZS/FCVTZU`, `FCMxx`, float across-lanes (`FMAXV`) and pairwise float are vector-FP work, not done here.
 - Tier-2 and the interpreter share the same executor and are not run separately by the NRO test.

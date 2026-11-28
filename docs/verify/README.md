@@ -29,7 +29,7 @@ Outside readers: [REPRODUCE.md](../REPRODUCE.md) describes the NRO test prerequi
 
 ## Paper checks
 
-[`papers/`](papers/README.md) reproduces published results (known-answer vectors, error bounds, a results table) as small ARM64 programs run with `run-elf`, with a manifest of what is and is not checked. Two are in the repository.
+[`papers/`](papers/README.md) reproduces published results (known-answer vectors, error bounds, a results table) as small ARM64 programs run with `run-elf`, with a manifest of what is and is not checked. 102 are in the repository.
 
 ## Evidence integrity gate
 
