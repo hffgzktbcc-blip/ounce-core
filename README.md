@@ -44,7 +44,7 @@ Ounce-Core's floating-point checks isolated the bug to two instructions. The mai
 - **It checks algorithms from papers and specifications against published test values.** A *paper check* is a small program written for this repo from a paper or specification, built as an ARM64 ELF (`clang -O1`), run on **Tier-3 only**, and required to match an expected-output file byte for byte and a native host build of the same source. All `102/102` [paper checks](docs/verify/papers/README.md) pass, but 79 are integer known-answer tests (ciphers, hashes, random number generators, encodings) and 23 use floating point. Several take their expected values from OEIS, Crypto++ or the Linux kernel's test tables rather than the paper itself (each folder's `paper.json` says where). They do not run on PRs, run weekly (Monday 03:00 UTC) and on manual `ci.yml` dispatch on `ubuntu-24.04-arm` (retaining 30-day `paper-checks-logs` artifacts and job summaries), and have not run on Tier-4 in CI. Separately, Kahan's `Paranoia` passes `4/4` (*"No failures, defects nor flaws… Excellent!"*), Shewchuk adaptive predicates pass `90,000` near-degenerate cases (`0` mismatches vs exact/QEMU/x86), and a set of physics and quantum-algorithm programs (Kepler, Crank-Nicolson tunnelling, 2D Ising, Grover, QFT) pass `9/9` invariant checks. Those physics and quantum programs are classical C simulations run on the emulator; no quantum hardware is involved. The sources and scripts for `Paranoia`, Shewchuk and the physics/quantum programs are **not in this repository**.
 - **Its runtime is safe Rust, with two isolated `unsafe` crates.** `src/` forbids `unsafe` code, and the compiler enforces it. `ounce-recompiler` (Tier-4) and `ounce-nce` (native execution) need `unsafe`; they are kept apart, and CI checks the boundary.
 
-**Limit:** this is a testing tool, not a fast emulator. It runs static Linux ARM64 ELFs and unencrypted NRO binaries; running arbitrary or dynamically linked Linux applications is not established. Instruction coverage is partial, and a match is evidence for the inputs tested, not proof. *Bounded-verified* is this project's label for "matched a named reference on the listed inputs, with the evidence kept"; it does not mean independently reproduced ([limits and label definitions](docs/LIMITS.md#maturity-labels-and-where-each-claim-sits)).
+**Limit:** this is a testing tool, not a fast emulator. It runs static and PIE Linux ARM64 ELFs, dynamically linked musl programs whose interpreter and libraries are under `--root`, and unencrypted NRO binaries; running arbitrary Linux applications is not established. Instruction coverage is partial, and a match is evidence for the inputs tested, not proof. *Bounded-verified* is this project's label for "matched a named reference on the listed inputs, with the evidence kept"; it does not mean independently reproduced ([limits and label definitions](docs/LIMITS.md#maturity-labels-and-where-each-claim-sits)).
 
 ## Try it
 
@@ -90,7 +90,7 @@ Cargo can use `ounce-core` as the runner for `aarch64-unknown-linux-musl` test b
 runner = "ounce-core run-elf --"
 ```
 
-On macOS the default link flags fail, and `ounce-core` rejects static-PIE, so build a static non-PIE binary with `rust-lld`:
+On macOS the default link flags fail, so build a static non-PIE binary with `rust-lld` (the tested setup):
 
 ```sh
 rustup target add aarch64-unknown-linux-musl

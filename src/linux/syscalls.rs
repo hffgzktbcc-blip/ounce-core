@@ -14,7 +14,7 @@ pub const ENOMEM: i64 = 12;
 pub const EACCES: i64 = 13;
 pub const EFAULT: i64 = 14;
 pub const EEXIST: i64 = 17;
-#[allow(dead_code)]
+pub const ENODEV: i64 = 19;
 pub const ENOTDIR: i64 = 20;
 pub const EISDIR: i64 = 21;
 pub const EINVAL: i64 = 22;
@@ -26,10 +26,14 @@ pub const ENOSPC: i64 = 28;
 pub const ESPIPE: i64 = 29;
 pub const ENAMETOOLONG: i64 = 36;
 pub const ENOSYS: i64 = 38;
+pub const EOVERFLOW: i64 = 75;
+pub const EOPNOTSUPP: i64 = 95;
 
 pub const SYS_FCNTL: u64 = 25;
 pub const SYS_IOCTL: u64 = 29;
 pub const SYS_UNLINKAT: u64 = 35;
+pub const SYS_STATFS: u64 = 43;
+pub const SYS_FSTATFS: u64 = 44;
 pub const SYS_FTRUNCATE: u64 = 46;
 pub const SYS_OPENAT: u64 = 56;
 pub const SYS_GETDENTS64: u64 = 61;
@@ -56,6 +60,7 @@ pub const SYS_SCHED_YIELD: u64 = 124;
 pub const SYS_RT_SIGACTION: u64 = 134;
 pub const SYS_RT_SIGPROCMASK: u64 = 135;
 pub const SYS_UNAME: u64 = 160;
+pub const SYS_UMASK: u64 = 166;
 pub const SYS_GETCPU: u64 = 168;
 pub const SYS_GETTIMEOFDAY: u64 = 169;
 pub const SYS_NANOSLEEP: u64 = 101;
@@ -84,7 +89,8 @@ const O_CREAT: u32 = 0o100;
 const O_EXCL: u32 = 0o200;
 const O_TRUNC: u32 = 0o1000;
 const O_APPEND: u32 = 0o2000;
-const O_DIRECTORY: u32 = 0o200000;
+/// arm64's value (x86's is `0o200000`, which on arm64 is `O_DIRECT`)
+const O_DIRECTORY: u32 = 0o40000;
 const O_CLOEXEC: u32 = 0o2000000;
 
 pub const MAX_OPEN_FDS: usize = 64;
@@ -110,6 +116,19 @@ enum InodeKind {
 
 /// The largest host file `--root` reads into the guest.
 const MAX_HOST_FILE: u64 = 256 << 20;
+
+/// What `statfs` reports a guest file to be on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GuestFs {
+    /// `/tmp`, `/var/tmp`, `/dev/null` and standard input: the in-memory scratch area
+    Scratch,
+    /// A file or directory under `--root`
+    Root,
+    /// `/proc/self/auxv`
+    Proc,
+    /// Standard output and error, which `fstat` reports as a terminal
+    Terminal,
+}
 
 #[derive(Debug, Clone)]
 struct Inode {
@@ -137,6 +156,10 @@ struct OpenFile {
 }
 
 const MREMAP_MAYMOVE: u64 = 1;
+const MAP_SHARED: u64 = 1;
+const MAP_PRIVATE: u64 = 2;
+const MAP_SHARED_VALIDATE: u64 = 3;
+const MAP_TYPE: u64 = 0xf;
 const MAP_FIXED: u64 = 0x10;
 const MAP_ANONYMOUS: u64 = 0x20;
 const PROT_READ: u64 = 1;
@@ -174,7 +197,7 @@ pub struct Process {
     brk_mapped_end: u64,
     mmap_next: u64,
     mmap_total: u64,
-    /// Virtual anonymous mappings, including unbacked PROT_NONE reservations.
+    /// Virtual mappings (anonymous and file-backed), including unbacked PROT_NONE reservations.
     mappings: Vec<(u64, u64)>,
     pub(super) signal_mask: u64,
     /// Signals raised with `tgkill` while blocked, waiting for `rt_sigprocmask` to unblock them (bit `n - 1`).
@@ -194,6 +217,8 @@ pub struct Process {
     warned_clone_thread: bool,
     /// `--root=DIR` (canonical): guest paths outside the scratch area name files under it, read-only
     host_root: Option<std::path::PathBuf>,
+    /// The file mode creation mask (`umask`); new scratch files get `mode & !umask`
+    umask: u32,
 }
 
 impl Process {
@@ -287,6 +312,7 @@ impl Process {
             rng: RNG_SEED,
             warned_clone_thread: false,
             host_root: None,
+            umask: 0o022,
         }
     }
 
@@ -460,11 +486,11 @@ impl Process {
             entries.extend(children);
             (InodeKind::HostDir(entries), 0o40555)
         } else {
-            if writes {
-                return -EROFS;
-            }
             if flags & O_DIRECTORY != 0 {
                 return -ENOTDIR;
+            }
+            if writes {
+                return -EROFS;
             }
             if meta.len() > MAX_HOST_FILE {
                 return -EFBIG;
@@ -658,6 +684,17 @@ impl Process {
             SYS_READLINKAT => -ENOENT,
             SYS_NEWFSTATAT => self.sys_newfstatat(a[0] as i64, a[1], a[2], a[3] as i32, mmu),
             SYS_FSTAT => self.sys_fstat(a[0], a[1], mmu),
+            SYS_STATFS => match read_path(a[0], mmu) {
+                Ok(path) => match self.path_fs(&path) {
+                    Some(fs) => self.write_statfs(fs, a[1], mmu),
+                    None => -ENOENT,
+                },
+                Err(e) => e,
+            },
+            SYS_FSTATFS => match self.fd_fs(a[0]) {
+                Some(fs) => self.write_statfs(fs, a[1], mmu),
+                None => -EBADF,
+            },
             SYS_GETDENTS64 => return self.sys_getdents64(a[0], a[1], a[2], mmu),
             SYS_FACCESSAT | 439 => self.sys_faccessat(a[1], a[2], mmu),
             SYS_SCHED_YIELD => 0,
@@ -728,6 +765,7 @@ impl Process {
             }
             SYS_CLOCK_GETTIME => self.sys_clock_gettime(a[0], a[1], mmu),
             SYS_UNAME => sys_uname(a[0], mmu),
+            SYS_UMASK => std::mem::replace(&mut self.umask, a[0] as u32 & 0o777) as i64,
             SYS_SCHED_SETAFFINITY => sys_sched_setaffinity(a[0], a[1], a[2], mmu),
             SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(a[0], a[1], a[2], mmu),
             SYS_GETCPU => sys_getcpu(a[0], a[1], a[2], mmu),
@@ -757,6 +795,10 @@ impl Process {
 
     fn sys_openat(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
         let (_dirfd, path_ptr, flags, mode) = (a[0] as i64, a[1], a[2] as u32, a[3] as u32);
+        // Linux 6.4 and later refuse the pair before looking at the path
+        if flags & O_CREAT != 0 && flags & O_DIRECTORY != 0 {
+            return -EINVAL;
+        }
         let path_str = match read_path(path_ptr, mmu) {
             Ok(p) => p,
             Err(_) => return -ENOENT,
@@ -772,7 +814,11 @@ impl Process {
                 -ENOENT
             };
         }
+        let wants_dir = flags & O_DIRECTORY != 0;
         if norm == "/dev/null" {
+            if wants_dir {
+                return -ENOTDIR;
+            }
             let cloexec = flags & O_CLOEXEC != 0;
             return match self.alloc_fd(
                 OpenFile {
@@ -788,6 +834,9 @@ impl Process {
             };
         }
         if norm == "/proc/self/auxv" {
+            if wants_dir {
+                return -ENOTDIR;
+            }
             if flags & O_ACCMODE != O_RDONLY {
                 return -EACCES;
             }
@@ -806,7 +855,7 @@ impl Process {
             };
         }
         if norm == "/tmp" || norm == "/var/tmp" {
-            if flags & O_ACCMODE != O_RDONLY && flags & O_DIRECTORY == 0 {
+            if flags & O_ACCMODE != O_RDONLY || flags & O_TRUNC != 0 {
                 return -EISDIR;
             }
             let cloexec = flags & O_CLOEXEC != 0;
@@ -826,6 +875,9 @@ impl Process {
         if let Some(&ino) = self.dentries.get(&norm) {
             if flags & O_CREAT != 0 && flags & O_EXCL != 0 {
                 return -EEXIST;
+            }
+            if wants_dir {
+                return -ENOTDIR;
             }
             if let Some(inode) = self.inodes.get_mut(&ino)
                 && let InodeKind::Regular(buf) = &mut inode.kind
@@ -861,7 +913,7 @@ impl Process {
                 Inode {
                     kind: InodeKind::Regular(Vec::new()),
                     ino,
-                    mode: 0o100000 | (mode & 0o777),
+                    mode: 0o100000 | (mode & 0o777 & !self.umask),
                     nlink: 1,
                 },
             );
@@ -1396,6 +1448,96 @@ impl Process {
         }
     }
 
+    /// The file system that guest path `path` is on, or `None` if nothing is there.
+    fn path_fs(&self, path: &str) -> Option<GuestFs> {
+        if path.is_empty() {
+            return None;
+        }
+        let norm = normalize_path(path);
+        if norm == "/proc/self/auxv" {
+            Some(GuestFs::Proc)
+        } else if is_allowed_path(&norm) {
+            let scratch =
+                norm == "/dev/null" || norm == "/tmp" || norm == "/var/tmp" || self.dentries.contains_key(&norm);
+            scratch.then_some(GuestFs::Scratch)
+        } else {
+            self.host_path(&norm).map(|_| GuestFs::Root)
+        }
+    }
+
+    /// The file system that descriptor `fd` is on, or `None` for a closed descriptor.
+    fn fd_fs(&self, fd: u64) -> Option<GuestFs> {
+        let file = self.files.get(&u32::try_from(fd).ok()?)?;
+        Some(match file.kind {
+            FileKind::Stdin => GuestFs::Scratch,
+            FileKind::Stdout | FileKind::Stderr => GuestFs::Terminal,
+            FileKind::Inode(ino) => match self.inodes.get(&ino)?.kind {
+                InodeKind::ProcAuxv => GuestFs::Proc,
+                InodeKind::HostFile(_) | InodeKind::HostDir(_) => GuestFs::Root,
+                InodeKind::Regular(_) | InodeKind::DevNull | InodeKind::Directory => GuestFs::Scratch,
+            },
+        })
+    }
+
+    /// `struct statfs` (120 bytes on arm64) for `fs`. The scratch area reports its own limits as a tmpfs; `--root`
+    /// reports a read-only file system of unknown type (0) with no free space, because the host's type and sizes are
+    /// not the guest's business and would differ between machines.
+    fn write_statfs(&self, fs: GuestFs, buf: u64, mmu: &mut Memory) -> i64 {
+        const TMPFS_MAGIC: u64 = 0x0102_1994;
+        const PROC_SUPER_MAGIC: u64 = 0x9fa0;
+        const DEVPTS_SUPER_MAGIC: u64 = 0x1cd1;
+        // f_flags: ST_VALID is always set by Linux; then ST_RDONLY, ST_NOSUID, ST_NODEV, ST_NOEXEC
+        const ST_VALID: u64 = 0x20;
+        const ST_RDONLY: u64 = 1;
+        const ST_NOSUID: u64 = 2;
+        const ST_NODEV: u64 = 4;
+        const ST_NOEXEC: u64 = 8;
+        let block = PAGE;
+        let (kind, blocks, free, files, free_files, flags) = match fs {
+            GuestFs::Scratch => {
+                let total = MAX_TOTAL_SCRATCH_BYTES as u64 / block;
+                let used = (self.total_scratch_bytes() as u64).div_ceil(block);
+                let count = self.regular_file_count() as u64;
+                let max = MAX_SCRATCH_FILES as u64;
+                (
+                    TMPFS_MAGIC,
+                    total,
+                    total.saturating_sub(used),
+                    max,
+                    max.saturating_sub(count),
+                    ST_NOSUID | ST_NODEV,
+                )
+            }
+            GuestFs::Root => (0, 0, 0, 0, 0, ST_RDONLY | ST_NOSUID | ST_NODEV),
+            GuestFs::Proc => (PROC_SUPER_MAGIC, 0, 0, 0, 0, ST_NOSUID | ST_NODEV | ST_NOEXEC),
+            GuestFs::Terminal => (DEVPTS_SUPER_MAGIC, 0, 0, 0, 0, ST_NOSUID | ST_NOEXEC),
+        };
+        // f_type f_bsize f_blocks f_bfree f_bavail f_files f_ffree f_fsid f_namelen f_frsize f_flags f_spare[4]
+        let words = [
+            kind,
+            block,
+            blocks,
+            free,
+            free,
+            files,
+            free_files,
+            0,
+            255,
+            block,
+            flags | ST_VALID,
+            0,
+            0,
+            0,
+            0,
+        ];
+        let bytes = words.map(u64::to_le_bytes);
+        if mmu.write_bytes(buf, bytes.as_flattened()).is_err() {
+            -EFAULT
+        } else {
+            0
+        }
+    }
+
     fn sys_fstat(&self, fd: u64, statbuf: u64, mmu: &mut Memory) -> i64 {
         let Ok(fd32) = u32::try_from(fd) else { return -EBADF };
         let Some(file) = self.files.get(&fd32) else {
@@ -1582,17 +1724,33 @@ impl Process {
     }
 
     fn sys_mmap(&mut self, a: [u64; 6], mmu: &mut Memory) -> Result<i64, String> {
-        let (addr, len, prot, flags, fd) = (a[0], a[1], a[2], a[3], a[4] as i64);
-        if flags & MAP_ANONYMOUS == 0 {
-            return Err(format!(
-                "mmap of file descriptor {fd} (only MAP_ANONYMOUS is supported), flags={flags:#x} at x0={addr:#x} len={len:#x}"
-            ));
+        let (addr, len, prot, flags, fd, offset) = (a[0], a[1], a[2], a[3], a[4] as i64, a[5]);
+        if !offset.is_multiple_of(PAGE) {
+            return Ok(-EINVAL);
         }
+        let is_file = flags & MAP_ANONYMOUS == 0;
+        let open_file = if is_file {
+            match u32::try_from(fd).ok().and_then(|fd| self.files.get(&fd)) {
+                Some(file) => Some((file.flags, file.kind)),
+                None => return Ok(-EBADF),
+            }
+        } else {
+            None
+        };
         if len == 0 || len > u64::MAX - (PAGE - 1) || prot & !7 != 0 {
             return Ok(-EINVAL);
         }
         let len = align_up(len);
-        let backed = if prot == 0 { 0 } else { len };
+        let file_map = if let Some((file_flags, file_kind)) = open_file {
+            match self.validate_file_mmap(file_flags, file_kind, offset, len, prot, flags) {
+                Ok(spec) => Some(spec),
+                Err(errno) => return Ok(errno),
+            }
+        } else {
+            None
+        };
+        // A file mapping holds its bytes even while PROT_NONE; an anonymous one is only a reservation.
+        let backed = if prot == 0 && file_map.is_none() { 0 } else { len };
         if backed > MAX_MMAP_CALL {
             return Ok(-ENOMEM);
         }
@@ -1633,15 +1791,70 @@ impl Process {
         if self.mmap_total.saturating_sub(old) + backed > MAX_MMAP_TOTAL {
             return Ok(-ENOMEM);
         }
+        if let Some((_, _, _, true)) = file_map {
+            return Err(format!(
+                "mmap of file descriptor {fd} with MAP_SHARED and PROT_WRITE (stores would not reach the file)"
+            ));
+        }
         mmu.unmap_range(base, len as usize);
         self.forget_mapping(base, base + len);
         self.mappings.push((base, base + len));
-        if backed != 0 {
+        if let Some((ino, start, end, false)) = file_map {
+            let bytes = match self.inodes.get(&ino).map(|inode| &inode.kind) {
+                Some(InodeKind::Regular(data) | InodeKind::HostFile(data)) => &data[start..end],
+                _ => &[],
+            };
+            mmu.map_range(base, len as usize, Permission::READ_WRITE);
+            mmu.write_bytes(base, bytes)
+                .map_err(|e| format!("mmap: copying the file: {e}"))?;
+            mmu.protect_range(base, len as usize, protection(prot));
+        } else if backed != 0 {
             mmu.map_range(base, len as usize, protection(prot));
         }
         self.mmap_total = self.mmap_total.saturating_sub(old) + backed;
         self.mmap_next = self.mmap_next.max(base + len);
         Ok(base as i64)
+    }
+
+    /// Validates a file-backed `mmap` request after `offset` alignment, `fd` lookup, and `len` page-alignment,
+    /// returning `(ino, start, end, shared_write)` into the inode's byte slice. The mapping is a snapshot copy
+    /// (which is what `MAP_PRIVATE` promises; read-only `MAP_SHARED` uses the same copy and does not see later
+    /// writes). `shared_write` is returned so `sys_mmap` can report it as unsupported only after every errno check.
+    fn validate_file_mmap(
+        &self,
+        file_flags: u32,
+        file_kind: FileKind,
+        offset: u64,
+        len: u64,
+        prot: u64,
+        flags: u64,
+    ) -> Result<(u64, usize, usize, bool), i64> {
+        // Linux's do_mmap order: mapping type/flags, offset overflow, access mode, then mappable file kind.
+        let kind = flags & MAP_TYPE;
+        if kind != MAP_SHARED && kind != MAP_PRIVATE && kind != MAP_SHARED_VALIDATE {
+            return Err(-EINVAL);
+        }
+        if kind == MAP_SHARED_VALIDATE && flags & !(MAP_TYPE | MAP_FIXED) != 0 {
+            return Err(-EOPNOTSUPP);
+        }
+        if offset > (i64::MAX as u64).saturating_sub(len) {
+            return Err(-EOVERFLOW);
+        }
+        let access = file_flags & O_ACCMODE;
+        let shared_write = kind != MAP_PRIVATE && prot & PROT_WRITE != 0;
+        if access == O_WRONLY || shared_write && access != O_RDWR {
+            return Err(-EACCES);
+        }
+        let FileKind::Inode(ino) = file_kind else {
+            return Err(-ENODEV);
+        };
+        let data = match self.inodes.get(&ino).map(|inode| &inode.kind) {
+            Some(InodeKind::Regular(data) | InodeKind::HostFile(data)) => data,
+            _ => return Err(-ENODEV),
+        };
+        let size = data.len() as u64;
+        let (start, end) = (offset.min(size) as usize, offset.saturating_add(len).min(size) as usize);
+        Ok((ino, start, end, shared_write))
     }
 
     fn sys_mprotect(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
@@ -1965,6 +2178,7 @@ pub fn syscall_name(nr: u64) -> Option<&'static str> {
         129 => "kill",
         131 => "tgkill",
         132 => "sigaltstack",
+        166 => "umask",
         168 => "getcpu",
         169 => "gettimeofday",
         173 => "getppid",
@@ -1975,6 +2189,7 @@ pub fn syscall_name(nr: u64) -> Option<&'static str> {
         178 => "gettid",
         220 => "clone",
         221 => "execve",
+        222 => "mmap",
         226 => "mprotect",
         233 => "madvise",
         261 => "prlimit64",

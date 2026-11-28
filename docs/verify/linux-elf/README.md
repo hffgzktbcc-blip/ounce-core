@@ -20,10 +20,10 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
   (PHDR, PHENT, PHNUM, PAGESZ, ENTRY, UID/GID, HWCAP, CLKTCK, SECURE, RANDOM, PLATFORM, EXECFN).
   `AT_HWCAP` advertises the features listed in [LIMITS.md](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026), known-answer tested on the interpreter, Tier-3 and Tier-4.
 - Syscalls (via `SVC #0`, number in x8): `write` (fd 1, fd 2 and files opened on the scratch file system), `writev` (fd 1 and 2 only), `exit`, `exit_group`,
-  `brk`, `mmap` (anonymous only, including sparse reservations and `MAP_FIXED`), `mprotect`, `munmap`, `mremap` (anonymous mappings; shrink in place, grow only with `MREMAP_MAYMOVE`), `ioctl` (returns
+  `brk`, `mmap` (anonymous including sparse reservations and `MAP_FIXED`, plus file-backed `MAP_PRIVATE` and read-only `MAP_SHARED`; writable `MAP_SHARED` file mappings stop as unsupported), `mprotect`, `munmap`, `mremap` (anonymous mappings; shrink in place, grow only with `MREMAP_MAYMOVE`), `umask`, `ioctl` (returns
   ENOTTY), `set_tid_address`, `rt_sigaction`/`rt_sigprocmask`, `sigaltstack`, `rt_sigreturn`, `getpid`/`gettid`,
   `getrlimit`/`prlimit64` (read-only stack limit), `ppoll`, `getrandom` (fixed deterministic stream),
-  `read`/`readv`/`pread64`/`pwrite64`/`lseek`/`fstat`/`newfstatat` (also `AT_EMPTY_PATH`)/`unlinkat`/`ftruncate`/`fcntl`,
+  `read`/`readv`/`pread64`/`pwrite64`/`lseek`/`fstat`/`newfstatat` (also `AT_EMPTY_PATH`)/`statfs`/`fstatfs`/`unlinkat`/`ftruncate`/`fcntl`,
   `clock_gettime` (realtime, monotonic), `uname`, `openat` on a bounded in-memory scratch file system (`/tmp`, `/var/tmp`, `/dev/null`, `/proc/self/auxv`; other paths ENOENT), `readlinkat` (always ENOENT),
   `sched_getaffinity` (one CPU: an 8-byte mask with CPU 0 set), `sched_setaffinity` and `getcpu` (the same single CPU),
   `clone` with thread flags, `futex`, `gettid`, `set_tid_address`, `prctl(PR_SET_NAME/PR_GET_NAME)`, `nanosleep` and
@@ -37,7 +37,7 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
 - **Libc-linked programs verified so far** (LZ4, xxHash, cJSON, zlib, wasm3, [PROGRAMS.md](PROGRAMS.md), and [HIGH-STAR-OPT-MATRIX.md](HIGH-STAR-OPT-MATRIX.md)). Other static glibc/musl binaries may stop early:
   they call `rseq`, `set_robust_list` or other syscalls that are not implemented.
   Each stops with a diagnosis naming the syscall. See [LIMITS.md](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026).
-- Dynamic executables run when their program interpreter is under `--root` (musl programs whose only library is libc; no other shared libraries yet), and a static-PIE loads at a base. 32-bit and big-endian ELF are rejected. `PT_TLS` is not
+- Dynamic executables run when their program interpreter and shared libraries are under `--root` (musl programs; glibc is untested), and a static-PIE loads at a base. 32-bit and big-endian ELF are rejected. `PT_TLS` is not
   set up (libc startup is expected to do it).
 - No host files unless `--root=DIR` is given (then a read-only view of `DIR`; see LIMITS.md); otherwise only the in-memory scratch area above. No sockets, `execve`, asynchronous signals, or `fork`; threads run one at a time on one host thread. Synchronous memory faults can deliver a guest
   SIGSEGV handler (including an alternate stack and `rt_sigreturn`).
