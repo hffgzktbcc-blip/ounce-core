@@ -68,6 +68,18 @@ jobs:
             done
           } > fuzz-results/run.log 2>&1
           tail -n 60 fuzz-results/run.log
+          # A long encoding-class histogram can push the summary lines out of the tail above, so
+          # print the counts on their own, and repeat them on the run summary page.
+          summary=$(grep -E '^(seed=|== host vs |fuzz_host seed=|--- fuzz-replay|engine: |words generated:|interpreter unimplemented|compared: |  tier[34] vs interp MISMATCH|host executed|host UNDEFINED|emulator unimplemented|emulator other errors|emulator executed|  exact match|  MISMATCH: |emulator runs a word)' fuzz-results/run.log || true)
+          echo "::group::Fuzz summary counts"
+          echo "$summary"
+          echo "::endgroup::"
+          {
+            echo "### Nightly fuzz summary (seed $seed, words $words)"
+            echo '```'
+            echo "$summary"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
