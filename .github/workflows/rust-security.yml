@@ -66,4 +66,4 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2
         with:
           command: check
-          arguments: --locked
+          arguments: --all-features --locked
