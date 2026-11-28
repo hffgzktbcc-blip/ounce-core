@@ -26,7 +26,8 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
   `read`/`readv`/`pread64`/`pwrite64`/`lseek`/`fstat`/`newfstatat` (also `AT_EMPTY_PATH`)/`unlinkat`/`ftruncate`/`fcntl`,
   `clock_gettime` (realtime, monotonic), `uname`, `openat` on a bounded in-memory scratch file system (`/tmp`, `/var/tmp`, `/dev/null`, `/proc/self/auxv`; other paths ENOENT), `readlinkat` (always ENOENT),
   `sched_getaffinity` (one CPU: an 8-byte mask with CPU 0 set), `sched_setaffinity` and `getcpu` (the same single CPU),
-  `clone`/`clone3` with thread flags (refused with `ENOSYS` and a one-time note on stderr; there are no guest threads).
+  `clone` with thread flags, `futex`, `gettid`, `set_tid_address`, `prctl(PR_SET_NAME/PR_GET_NAME)`, `nanosleep` and
+  `clock_nanosleep` (guest threads scheduled one at a time; see LIMITS.md), and `clone3` (ENOSYS, so glibc falls back to `clone`).
 - Test programs: `tests/linux-elf/src/*.c`, built by `tests/linux-elf/src/build.sh` (clang plus LLD,
   or rustup's `rust-lld`) into `tests/linux-elf/bin/` (each ELF is about 1-2 KB). Tests run each
   program on `tier3` and `tier4` (without `--features native-jit` Tier-4 runs Tier-3 with a stderr warning and `silent_fallback` true in the report; the engine-comparison tooling treats that as not checked).
@@ -34,11 +35,11 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
 ## Honest limits
 
 - **Libc-linked programs verified so far** (LZ4, xxHash, cJSON, zlib, wasm3, [PROGRAMS.md](PROGRAMS.md), and [HIGH-STAR-OPT-MATRIX.md](HIGH-STAR-OPT-MATRIX.md)). Other static glibc/musl binaries may stop early:
-  they call `futex`, `rseq`, `set_robust_list` or other syscalls that are not implemented.
+  they call `rseq`, `set_robust_list` or other syscalls that are not implemented.
   Each stops with a diagnosis naming the syscall. See [LIMITS.md](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026).
 - Dynamic executables, `ET_DYN`/static-PIE, 32-bit and big-endian ELF are rejected. `PT_TLS` is not
   set up (libc startup is expected to do it).
-- No host files unless `--root=DIR` is given (then a read-only view of `DIR`; see LIMITS.md); otherwise only the in-memory scratch area above. No sockets, threads, `clone`, `execve`, asynchronous signals, or `fork`. Synchronous memory faults can deliver a guest
+- No host files unless `--root=DIR` is given (then a read-only view of `DIR`; see LIMITS.md); otherwise only the in-memory scratch area above. No sockets, `execve`, asynchronous signals, or `fork`; threads run one at a time on one host thread. Synchronous memory faults can deliver a guest
   SIGSEGV handler (including an alternate stack and `rt_sigreturn`).
 - Segment pages are RW or RWX only: read-only data is not write-protected, and no W^X.
 - Accessible memory is allocated eagerly: `brk` growth is capped at 512 MiB, one accessible

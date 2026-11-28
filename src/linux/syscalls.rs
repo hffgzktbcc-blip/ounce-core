@@ -57,6 +57,8 @@ pub const SYS_RT_SIGPROCMASK: u64 = 135;
 pub const SYS_UNAME: u64 = 160;
 pub const SYS_GETCPU: u64 = 168;
 pub const SYS_GETTIMEOFDAY: u64 = 169;
+pub const SYS_NANOSLEEP: u64 = 101;
+pub const SYS_CLOCK_NANOSLEEP: u64 = 115;
 pub const SYS_GETPID: u64 = 172;
 pub const SYS_GETPPID: u64 = 173;
 pub const SYS_GETUID: u64 = 174;
@@ -661,6 +663,8 @@ impl Process {
             SYS_FACCESSAT | 439 => self.sys_faccessat(a[1], a[2], mmu),
             SYS_SCHED_YIELD => 0,
             SYS_GETTIMEOFDAY => self.sys_gettimeofday(a[0], a[1], mmu),
+            SYS_NANOSLEEP => self.sys_nanosleep(None, 0, a[0], mmu),
+            SYS_CLOCK_NANOSLEEP => self.sys_nanosleep(Some(a[0]), a[1], a[2], mmu),
             SYS_GETPID | SYS_GETTID => PID as i64,
             SYS_GETPPID => 0,
             SYS_GETUID | SYS_GETEUID => UID as i64,
@@ -704,10 +708,12 @@ impl Process {
                 } else {
                     a[0]
                 };
-                if (flags & CLONE_THREAD) != 0 && !self.warned_clone_thread {
+                // threads come through `clone` (the runner's `threads` module takes those before dispatch);
+                // `clone3` is ENOSYS so glibc falls back to `clone`. New processes (fork) are not supported.
+                if (flags & CLONE_THREAD) == 0 && !self.warned_clone_thread {
                     self.warned_clone_thread = true;
                     let msg = format!(
-                        "[run-elf] guest tried to start a thread (clone flags {:#x}); guest threads are not supported, clone returned ENOSYS\n",
+                        "[run-elf] guest tried to start a process (clone flags {:#x}); fork is not supported, clone returned ENOSYS\n",
                         flags
                     );
                     out.write(2, msg.as_bytes());
@@ -1722,11 +1728,13 @@ impl Process {
         base as i64
     }
 
-    fn sys_clock_gettime(&mut self, clk: u64, ts: u64, mmu: &mut Memory) -> i64 {
+    /// The current time of clock `clk` (`CLOCK_REALTIME` 0, `MONOTONIC` 1, the CPU-time clocks 2 and 3,
+    /// `MONOTONIC_RAW` 4, `BOOTTIME` 7) as seconds and nanoseconds, without advancing the deterministic clock.
+    fn clock_now(&self, clk: u64) -> Option<(u64, u64)> {
         if !matches!(clk, 0 | 1 | 2 | 3 | 4 | 7) {
-            return -EINVAL;
+            return None;
         }
-        let (sec, nsec) = if let Some(ticks) = self.deterministic_ticks {
+        Some(if let Some(ticks) = self.deterministic_ticks {
             if matches!(clk, 2 | 3) {
                 (
                     self.retired_instructions / 1_000_000_000,
@@ -1754,6 +1762,12 @@ impl Process {
                 }
                 _ => unreachable!(),
             }
+        })
+    }
+
+    fn sys_clock_gettime(&mut self, clk: u64, ts: u64, mmu: &mut Memory) -> i64 {
+        let Some((sec, nsec)) = self.clock_now(clk) else {
+            return -EINVAL;
         };
         let mut buf = [0u8; 16];
         buf[..8].copy_from_slice(&sec.to_le_bytes());
@@ -1768,6 +1782,38 @@ impl Process {
             }
             0
         }
+    }
+
+    /// `nanosleep(req, rem)` (`clk` None) and `clock_nanosleep(clk, flags, req, rem)`. With `--deterministic`
+    /// the wall and monotonic clocks jump ahead by the sleep (whole milliseconds, rounded up) instead of waiting;
+    /// otherwise the host sleeps. `TIMER_ABSTIME` sleeps until that time on `clk`. Never interrupted, so
+    /// `rem` is left alone.
+    fn sys_nanosleep(&mut self, clk: Option<u64>, flags: u64, req: u64, mmu: &mut Memory) -> i64 {
+        const TIMER_ABSTIME: u64 = 1;
+        let (Ok(sec), Ok(nsec)) = (mmu.read_u64(req), mmu.read_u64(req + 8)) else {
+            return -EFAULT;
+        };
+        if (sec as i64) < 0 || nsec >= 1_000_000_000 {
+            return -EINVAL;
+        }
+        let mut ns = u128::from(sec) * 1_000_000_000 + u128::from(nsec);
+        if let Some(clk) = clk {
+            if matches!(clk, 2 | 3) {
+                return -EINVAL; // sleeping on the calling thread's own CPU-time clock
+            }
+            let Some((now_s, now_ns)) = self.clock_now(clk) else {
+                return -EINVAL;
+            };
+            if flags & TIMER_ABSTIME != 0 {
+                ns = ns.saturating_sub(u128::from(now_s) * 1_000_000_000 + u128::from(now_ns));
+            }
+        }
+        if let Some(ticks) = &mut self.deterministic_ticks {
+            *ticks = ticks.saturating_add(ns.div_ceil(1_000_000) as u64);
+        } else {
+            std::thread::sleep(std::time::Duration::from_nanos(ns.min(u128::from(u64::MAX)) as u64));
+        }
+        0
     }
 
     fn sys_gettimeofday(&mut self, tv: u64, _tz: u64, mmu: &mut Memory) -> i64 {
