@@ -1,7 +1,7 @@
 # SIGILL, SIGBUS and the exclusive monitor
 
 Evidence for [`fault_signals`](../../../tests/linux-elf/src/fault_signals.c) and the exclusive-monitor rules in
-[LIMITS](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026).
+[LIMITS](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute).
 
 **Signal ABI (ground truth: Linux arm64, not macOS).** The guest sees what the kernel delivers
 ([`arch/arm64/kernel/traps.c`](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/kernel/traps.c), v6.12):
