@@ -139,5 +139,5 @@ Graphics Demo in this pass; a failed *Run in a Window* dialog in this pass.
 ## Known limits
 
 - The page's "Compare with the recorded reference" needs a prebuilt harness NRO (devkitA64) and matches by file name. The app does not build harnesses or fetch upstream sources. It is a byte comparison with the committed reference, not a proof.
-- Linux ARM64 programs are accepted (static AArch64 ELF only; dynamic, PIE, 32-bit and x86-64 files are refused or stop with a diagnosis). They are never run on this Mac's CPU, so *Results match* for one means Tier-3 and Tier-4 agreed (and, for a known test program, matched the recorded output), not that it matched this Mac.
+- Linux ARM64 programs are accepted (AArch64 ELF only; a dynamically linked program stops with a diagnosis because the app gives it no `--root`, and 32-bit and x86-64 files are refused). They are never run on this Mac's CPU, so *Results match* for one means Tier-3 and Tier-4 agreed (and, for a known test program, matched the recorded output), not that it matched this Mac.
 - The diagnosis reads the last 256 KiB of the log; a failure earlier in a very long run can be missed.

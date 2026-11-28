@@ -64,7 +64,7 @@ For `run-elf`, the deterministic realtime epoch is `1700000000.000000000`; the f
 monotonic reading is `0.001000000`. The Linux virtual counter runs at 1 GHz and derives
 from retired instructions in deterministic mode. Process and thread CPU-time clocks use
 the same deterministic instruction-time model. See [the exact clock and system-register
-contract](LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026).
+contract](LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute).
 
 Field list, stop kinds, and the limits of this report:
 [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md).
@@ -75,14 +75,14 @@ The [Lua floating-point case study](community/LUA_FP_BUG_WALKTHROUGH.md) explain
 program returned an incorrect answer even though Ounce-Core's engines initially
 agreed. It shows the dated evidence and a correctly flagged optional rerun.
 
-## A static Linux ELF
+## A Linux ELF
 
 ```sh
 cargo run --release -- run-elf path/to/program.elf --cpu=tier3 --deterministic
 ```
 
-That runner is for static musl AArch64 `ET_EXEC` programs. See
-[verify/linux-elf/README.md](verify/linux-elf/README.md). Put the ELF after `--` to pass it
+That runner loads static, static-PIE and (with `--root=DIR` holding the interpreter and libraries) dynamically linked musl AArch64 programs. See
+[verify/linux-elf/README.md](verify/linux-elf/README.md) and [LIMITS](LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute). Put the ELF after `--` to pass it
 guest arguments without host option parsing: `ounce-core run-elf -- program.elf arg1 arg2`.
 Guest file descriptor 0 is at end-of-file unless you pass `--stdin` (read the host's stdin) or
 `--stdin=<path>` (read a file); at most 64 MiB is read. `getrandom` returns a fixed,
