@@ -23,7 +23,7 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
   `brk`, `mmap` (anonymous including sparse reservations and `MAP_FIXED`, plus file-backed `MAP_PRIVATE` and read-only `MAP_SHARED`; writable `MAP_SHARED` file mappings stop as unsupported), `mprotect`, `munmap`, `mremap` (anonymous mappings; shrink in place, grow only with `MREMAP_MAYMOVE`), `umask`, `ioctl` (returns
   ENOTTY), `set_tid_address`, `rt_sigaction`/`rt_sigprocmask`, `sigaltstack`, `rt_sigreturn`, `getpid`/`gettid`,
   `getrlimit`/`prlimit64` (read-only stack limit), `ppoll`, `getrandom` (fixed deterministic stream),
-  `read`/`readv`/`pread64`/`pwrite64`/`lseek`/`fstat`/`newfstatat` (also `AT_EMPTY_PATH`)/`unlinkat`/`ftruncate`/`fcntl`,
+  `read`/`readv`/`pread64`/`pwrite64`/`lseek`/`fstat`/`newfstatat` (also `AT_EMPTY_PATH`)/`statfs`/`fstatfs`/`unlinkat`/`ftruncate`/`fcntl`,
   `clock_gettime` (realtime, monotonic), `uname`, `openat` on a bounded in-memory scratch file system (`/tmp`, `/var/tmp`, `/dev/null`, `/proc/self/auxv`; other paths ENOENT), `readlinkat` (always ENOENT),
   `sched_getaffinity` (one CPU: an 8-byte mask with CPU 0 set), `sched_setaffinity` and `getcpu` (the same single CPU),
   `clone` with thread flags, `futex`, `gettid`, `set_tid_address`, `prctl(PR_SET_NAME/PR_GET_NAME)`, `nanosleep` and

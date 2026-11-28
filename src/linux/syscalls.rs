@@ -32,6 +32,8 @@ pub const EOPNOTSUPP: i64 = 95;
 pub const SYS_FCNTL: u64 = 25;
 pub const SYS_IOCTL: u64 = 29;
 pub const SYS_UNLINKAT: u64 = 35;
+pub const SYS_STATFS: u64 = 43;
+pub const SYS_FSTATFS: u64 = 44;
 pub const SYS_FTRUNCATE: u64 = 46;
 pub const SYS_OPENAT: u64 = 56;
 pub const SYS_GETDENTS64: u64 = 61;
@@ -114,6 +116,19 @@ enum InodeKind {
 
 /// The largest host file `--root` reads into the guest.
 const MAX_HOST_FILE: u64 = 256 << 20;
+
+/// What `statfs` reports a guest file to be on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GuestFs {
+    /// `/tmp`, `/var/tmp`, `/dev/null` and standard input: the in-memory scratch area
+    Scratch,
+    /// A file or directory under `--root`
+    Root,
+    /// `/proc/self/auxv`
+    Proc,
+    /// Standard output and error, which `fstat` reports as a terminal
+    Terminal,
+}
 
 #[derive(Debug, Clone)]
 struct Inode {
@@ -669,6 +684,17 @@ impl Process {
             SYS_READLINKAT => -ENOENT,
             SYS_NEWFSTATAT => self.sys_newfstatat(a[0] as i64, a[1], a[2], a[3] as i32, mmu),
             SYS_FSTAT => self.sys_fstat(a[0], a[1], mmu),
+            SYS_STATFS => match read_path(a[0], mmu) {
+                Ok(path) => match self.path_fs(&path) {
+                    Some(fs) => self.write_statfs(fs, a[1], mmu),
+                    None => -ENOENT,
+                },
+                Err(e) => e,
+            },
+            SYS_FSTATFS => match self.fd_fs(a[0]) {
+                Some(fs) => self.write_statfs(fs, a[1], mmu),
+                None => -EBADF,
+            },
             SYS_GETDENTS64 => return self.sys_getdents64(a[0], a[1], a[2], mmu),
             SYS_FACCESSAT | 439 => self.sys_faccessat(a[1], a[2], mmu),
             SYS_SCHED_YIELD => 0,
@@ -1416,6 +1442,96 @@ impl Process {
         b[104..112].copy_from_slice(&sec.to_le_bytes());
         b[112..120].copy_from_slice(&nsec.to_le_bytes());
         if mmu.write_bytes(statbuf, &b).is_err() {
+            -EFAULT
+        } else {
+            0
+        }
+    }
+
+    /// The file system that guest path `path` is on, or `None` if nothing is there.
+    fn path_fs(&self, path: &str) -> Option<GuestFs> {
+        if path.is_empty() {
+            return None;
+        }
+        let norm = normalize_path(path);
+        if norm == "/proc/self/auxv" {
+            Some(GuestFs::Proc)
+        } else if is_allowed_path(&norm) {
+            let scratch =
+                norm == "/dev/null" || norm == "/tmp" || norm == "/var/tmp" || self.dentries.contains_key(&norm);
+            scratch.then_some(GuestFs::Scratch)
+        } else {
+            self.host_path(&norm).map(|_| GuestFs::Root)
+        }
+    }
+
+    /// The file system that descriptor `fd` is on, or `None` for a closed descriptor.
+    fn fd_fs(&self, fd: u64) -> Option<GuestFs> {
+        let file = self.files.get(&u32::try_from(fd).ok()?)?;
+        Some(match file.kind {
+            FileKind::Stdin => GuestFs::Scratch,
+            FileKind::Stdout | FileKind::Stderr => GuestFs::Terminal,
+            FileKind::Inode(ino) => match self.inodes.get(&ino)?.kind {
+                InodeKind::ProcAuxv => GuestFs::Proc,
+                InodeKind::HostFile(_) | InodeKind::HostDir(_) => GuestFs::Root,
+                InodeKind::Regular(_) | InodeKind::DevNull | InodeKind::Directory => GuestFs::Scratch,
+            },
+        })
+    }
+
+    /// `struct statfs` (120 bytes on arm64) for `fs`. The scratch area reports its own limits as a tmpfs; `--root`
+    /// reports a read-only file system of unknown type (0) with no free space, because the host's type and sizes are
+    /// not the guest's business and would differ between machines.
+    fn write_statfs(&self, fs: GuestFs, buf: u64, mmu: &mut Memory) -> i64 {
+        const TMPFS_MAGIC: u64 = 0x0102_1994;
+        const PROC_SUPER_MAGIC: u64 = 0x9fa0;
+        const DEVPTS_SUPER_MAGIC: u64 = 0x1cd1;
+        // f_flags: ST_VALID is always set by Linux; then ST_RDONLY, ST_NOSUID, ST_NODEV, ST_NOEXEC
+        const ST_VALID: u64 = 0x20;
+        const ST_RDONLY: u64 = 1;
+        const ST_NOSUID: u64 = 2;
+        const ST_NODEV: u64 = 4;
+        const ST_NOEXEC: u64 = 8;
+        let block = PAGE;
+        let (kind, blocks, free, files, free_files, flags) = match fs {
+            GuestFs::Scratch => {
+                let total = MAX_TOTAL_SCRATCH_BYTES as u64 / block;
+                let used = (self.total_scratch_bytes() as u64).div_ceil(block);
+                let count = self.regular_file_count() as u64;
+                let max = MAX_SCRATCH_FILES as u64;
+                (
+                    TMPFS_MAGIC,
+                    total,
+                    total.saturating_sub(used),
+                    max,
+                    max.saturating_sub(count),
+                    ST_NOSUID | ST_NODEV,
+                )
+            }
+            GuestFs::Root => (0, 0, 0, 0, 0, ST_RDONLY | ST_NOSUID | ST_NODEV),
+            GuestFs::Proc => (PROC_SUPER_MAGIC, 0, 0, 0, 0, ST_NOSUID | ST_NODEV | ST_NOEXEC),
+            GuestFs::Terminal => (DEVPTS_SUPER_MAGIC, 0, 0, 0, 0, ST_NOSUID | ST_NOEXEC),
+        };
+        // f_type f_bsize f_blocks f_bfree f_bavail f_files f_ffree f_fsid f_namelen f_frsize f_flags f_spare[4]
+        let words = [
+            kind,
+            block,
+            blocks,
+            free,
+            free,
+            files,
+            free_files,
+            0,
+            255,
+            block,
+            flags | ST_VALID,
+            0,
+            0,
+            0,
+            0,
+        ];
+        let bytes = words.map(u64::to_le_bytes);
+        if mmu.write_bytes(buf, bytes.as_flattened()).is_err() {
             -EFAULT
         } else {
             0
