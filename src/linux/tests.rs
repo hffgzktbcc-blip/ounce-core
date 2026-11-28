@@ -5,6 +5,7 @@ use crate::cpu::CpuTier;
 const HELLO: &[u8] = include_bytes!("../../tests/linux-elf/bin/hello.elf");
 const EXITCODE: &[u8] = include_bytes!("../../tests/linux-elf/bin/exitcode.elf");
 const ARGS: &[u8] = include_bytes!("../../tests/linux-elf/bin/args.elf");
+const THREADS: &[u8] = include_bytes!("../../tests/linux-elf/bin/threads.elf");
 const MEMORY: &[u8] = include_bytes!("../../tests/linux-elf/bin/memory.elf");
 const BADSYS: &[u8] = include_bytes!("../../tests/linux-elf/bin/badsyscall.elf");
 const BASIC_MATH: &[u8] = include_bytes!("../../tests/linux-elf/bin/basic_math.elf");
@@ -505,7 +506,10 @@ fn getcpu_reports_cpu_zero_and_node_zero() {
 }
 
 #[test]
-fn clone_and_clone3_return_enosys_and_emit_one_time_thread_warning() {
+fn fork_style_clone_and_clone3_return_enosys_with_one_time_warning() {
+    // Threads are created by the runner (`threads.rs`) before dispatch; what reaches dispatch is a fork-style
+    // clone (no CLONE_THREAD), which stays ENOSYS with one stderr note, and clone3, which is ENOSYS so glibc
+    // falls back to clone.
     use super::syscalls::{CLONE_THREAD, ENOSYS, Outcome, Process, SYS_CLONE, SYS_CLONE3};
     use crate::mmu::{Memory, Permission};
     let mut proc = Process::new(0x1000);
@@ -513,41 +517,33 @@ fn clone_and_clone3_return_enosys_and_emit_one_time_thread_warning() {
     mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
     let mut out = Capture::default();
 
-    // First clone call with CLONE_THREAD writes one-time warning to stderr (fd 2).
-    let flags = 0x7d0f00; // musl pthread_create flags (includes CLONE_THREAD 0x10000)
+    let fork = 0x11; // SIGCHLD only, as fork(2) passes
     assert_eq!(
-        proc.dispatch(SYS_CLONE, [flags, 0x2000, 0, 0, 0, 0], &mut mem, &mut out),
+        proc.dispatch(SYS_CLONE, [fork, 0, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(-ENOSYS)
     );
     let expected_msg = format!(
-        "[run-elf] guest tried to start a thread (clone flags {:#x}); guest threads are not supported, clone returned ENOSYS\n",
-        flags
+        "[run-elf] guest tried to start a process (clone flags {:#x}); fork is not supported, clone returned ENOSYS\n",
+        fork
     );
     assert_eq!(String::from_utf8_lossy(&out.err), expected_msg);
     assert!(out.out.is_empty(), "stdout must remain clean");
-
-    // Second clone call with thread flags returns -ENOSYS but emits no further warning.
     assert_eq!(
-        proc.dispatch(SYS_CLONE, [flags, 0x2000, 0, 0, 0, 0], &mut mem, &mut out),
+        proc.dispatch(SYS_CLONE, [fork, 0, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(-ENOSYS)
     );
     assert_eq!(
         String::from_utf8_lossy(&out.err),
         expected_msg,
-        "stderr should not duplicate the warning"
+        "the note is printed once"
     );
 
-    // clone3 also returns -ENOSYS
     mem.write_u64(0x1000, CLONE_THREAD).unwrap();
     assert_eq!(
         proc.dispatch(SYS_CLONE3, [0x1000, 88, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(-ENOSYS)
     );
-    assert_eq!(
-        String::from_utf8_lossy(&out.err),
-        expected_msg,
-        "already warned, no new warning from clone3"
-    );
+    assert_eq!(String::from_utf8_lossy(&out.err), expected_msg, "clone3 adds no note");
 }
 
 #[test]
@@ -556,13 +552,13 @@ fn single_cpu_and_clone_syscalls_execute_across_all_tiers() {
     // 1. sched_getaffinity(0, 8, sp) -> returns 8, writes mask 1
     // 2. sched_setaffinity(0, 8, sp) -> returns 0
     // 3. getcpu(sp, sp + 4, 0) -> returns 0, writes cpu 0 and node 0
-    // 4. clone(CLONE_THREAD | ..., 0, 0, 0, 0) -> returns -38 (ENOSYS)
+    // 4. clone(CLONE_THREAD, 0, 0, 0, 0) without CLONE_VM/CLONE_SIGHAND -> returns -22 (EINVAL, as on Linux)
     // 5. exit 0 (or exit 42 on any failure)
     let code: [u32; 42] = [
         0xd2800f68, 0xd2800000, 0xd2800101, 0x910003e2, 0xd4000001, 0xf100201f, 0x54000421, 0xf94003e3, 0xf100047f,
         0x540003c1, 0xd2800f48, 0xd2800000, 0xd2800101, 0x910003e2, 0xd4000001, 0xb5000300, 0xd2801508, 0x910003e0,
         0x910013e1, 0xd2800002, 0xd4000001, 0xb5000240, 0xb94003e4, 0x35000204, 0xb94007e5, 0x350001c5, 0xd2801b88,
-        0xd2a00020, 0xd2800001, 0xd2800002, 0xd2800003, 0xd2800004, 0xd2800005, 0xd4000001, 0xb100981f, 0x54000081,
+        0xd2a00020, 0xd2800001, 0xd2800002, 0xd2800003, 0xd2800004, 0xd2800005, 0xd4000001, 0xb100581f, 0x54000081,
         0xd2800ba8, 0xd2800000, 0xd4000001, 0xd2800ba8, 0xd2800540, 0xd4000001,
     ];
     let elf = tiny_elf(&code);
@@ -1581,5 +1577,76 @@ fn getrandom_is_deterministic_validated_and_capped() {
     assert_eq!(
         p.dispatch(278, [0x1000, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(256)
+    );
+}
+
+/// Two guest threads from a raw `clone` (musl's pthread flags plus CLONE_CHILD_SETTID): futex hand-off, 200,000
+/// racing LDXR/STXR increments, TLS and gettid per thread, and a join through CLONE_CHILD_CLEARTID. The expected
+/// output is what the same ELF prints under `qemu-aarch64` on Linux.
+#[test]
+fn guest_threads_share_memory_block_on_futexes_and_join() {
+    let want = "distinct tids\nparent settid ok\nwait on a changed word: EAGAIN\njoined\ncounter=200000\ntls ok\n\
+                gettid ok\nwake with no waiters: 0\n";
+    for t in TIERS {
+        let (r, out) = go(THREADS, &["threads"], t);
+        assert_eq!(r.stop, Stop::Exited(0), "{t:?}: {r:?}\n{out}");
+        assert_eq!(out, want, "{t:?}");
+    }
+}
+
+/// A futex wait that no thread can ever wake hangs on Linux; the runner stops it with a diagnosis instead.
+#[test]
+fn futex_wait_with_no_thread_left_to_wake_it_is_a_diagnosed_deadlock() {
+    // ldr w2, [sp]; mov x0, sp; mov x1, #FUTEX_WAIT_PRIVATE; mov x8, #SYS_futex; svc #0
+    let elf = tiny_elf(&[0xB940_03E2, 0x9100_03E0, 0xD280_1001, 0xD280_0C48, 0xD400_0001]);
+    for t in TIERS {
+        let (r, _) = go(&elf, &["deadlock"], t);
+        let Stop::Failed { diagnosis, .. } = r.stop else {
+            panic!("expected a diagnosed failure: {r:?}")
+        };
+        assert!(diagnosis.contains("deadlock"), "{t:?}: {diagnosis}");
+    }
+}
+
+#[test]
+fn nanosleep_moves_the_deterministic_clock_instead_of_waiting() {
+    use super::syscalls::{EINVAL, Outcome, Process, SYS_CLOCK_NANOSLEEP, SYS_NANOSLEEP};
+    use crate::mmu::{Memory, Permission};
+    const SYS_CLOCK_GETTIME: u64 = 113;
+    let mut proc = Process::new_deterministic(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    let mut now = |proc: &mut Process, mem: &mut Memory| {
+        assert_eq!(
+            proc.dispatch(SYS_CLOCK_GETTIME, [1, 0x1100, 0, 0, 0, 0], mem, &mut out),
+            Outcome::Return(0)
+        );
+        mem.read_u64(0x1100).unwrap() * 1_000_000_000 + mem.read_u64(0x1108).unwrap()
+    };
+    let before = now(&mut proc, &mut mem);
+    // 1.5 s: the monotonic clock jumps by at least that much, with no host wait
+    mem.write_u64(0x1000, 1).unwrap();
+    mem.write_u64(0x1008, 500_000_000).unwrap();
+    let mut out2 = Capture::default();
+    assert_eq!(
+        proc.dispatch(SYS_NANOSLEEP, [0x1000, 0, 0, 0, 0, 0], &mut mem, &mut out2),
+        Outcome::Return(0)
+    );
+    let after = now(&mut proc, &mut mem);
+    assert!(after - before >= 1_500_000_000, "{before} -> {after}");
+    // TIMER_ABSTIME in the past returns at once; a tv_nsec of 10^9 is EINVAL
+    mem.write_u64(0x1000, 0).unwrap();
+    mem.write_u64(0x1008, 0).unwrap();
+    assert_eq!(
+        proc.dispatch(SYS_CLOCK_NANOSLEEP, [1, 1, 0x1000, 0, 0, 0], &mut mem, &mut out2),
+        Outcome::Return(0)
+    );
+    let past = now(&mut proc, &mut mem);
+    assert!(past - after < 10_000_000, "an absolute time in the past does not sleep");
+    mem.write_u64(0x1008, 1_000_000_000).unwrap();
+    assert_eq!(
+        proc.dispatch(SYS_NANOSLEEP, [0x1000, 0, 0, 0, 0, 0], &mut mem, &mut out2),
+        Outcome::Return(-EINVAL)
     );
 }

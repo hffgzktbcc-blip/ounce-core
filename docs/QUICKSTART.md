@@ -108,7 +108,7 @@ RUSTFLAGS="-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=
   cargo test --target aarch64-unknown-linux-musl
 ```
 
-`--test-threads=1` is not required: libtest tries to spawn a thread per test, `ounce-core` refuses `clone` thread flags with `ENOSYS` (emitting a one-time note on stderr), and musl translates the error to `WouldBlock`, which libtest catches to execute tests sequentially inline on the main thread (and `--test-threads=1` continues to work). `sched_getaffinity`, `sched_setaffinity`, and `getcpu` complete honest 1-CPU scheduling. The result below is from a three-test library crate on an Apple M3 Mac (Rust 1.98, `ounce-core` built from `main` on Tier-3):
+`--test-threads=1` is not required: libtest spawns its test threads as guest threads, which ounce-core schedules one at a time on one host thread (`--test-threads=1` continues to work). `sched_getaffinity`, `sched_setaffinity`, and `getcpu` complete honest 1-CPU scheduling. The result below is from a three-test library crate on an Apple M3 Mac (Rust 1.98, `ounce-core` built from `main` on Tier-3):
 
 ```text
 running 3 tests
@@ -121,10 +121,10 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 [run-elf] engine=Tier-3 instructions=164740 syscalls=74
 ```
 
-This shows that small test binaries run; it does not show that every crate's tests do. Tests
-that spawn threads get a thread-creation error inside the guest (`WouldBlock`, os error 11), after a
-one-time ounce-core note on stderr; tests that need other unsupported instructions or system
-calls stop with a diagnosis ([limits](LIMITS.md)).
+This shows that small test binaries run; it does not show that every crate's tests do. That run
+predates guest threads, when libtest fell back to running tests inline. Tests that spawn threads
+now run them as guest threads; tests that need unsupported instructions or system calls stop
+with a diagnosis ([limits](LIMITS.md)).
 
 ## Where the other tools live
 
