@@ -4271,6 +4271,38 @@ mod tests {
             });
             assert_eq!((cpu.regs.read_q(0), cpu.regs.fpsr), (want, fpsr), "{single:#010x}");
         }
+        // Non-default FPCR: SNaN quieting (+IOC), DN forcing default NaN, RMode=RP, and FZ flushing denormal input (+IDC)
+        let (cpu, _) = run(&[0x1E63_4020], |c, _| {
+            c.regs.write_q(1, 0x7F80_0001u128);
+        });
+        assert_eq!(
+            (cpu.regs.read_q(0), cpu.regs.fpsr),
+            (0x7FC0, 0x01),
+            "sNaN quieted + IOC"
+        );
+        let (cpu, _) = run(&[0x1E63_4020], |c, _| {
+            c.regs.fpcr = 1 << 25; // DN
+            c.regs.write_q(1, 0xFFC1_0000u128);
+        });
+        assert_eq!((cpu.regs.read_q(0), cpu.regs.fpsr), (0x7FC0, 0), "DN -> default NaN");
+        let (cpu, _) = run(&[0x1E63_4020], |c, _| {
+            c.regs.fpcr = 1 << 22; // RMode = RP (+inf)
+            c.regs.write_q(1, 0x3F80_0001u128);
+        });
+        assert_eq!(
+            (cpu.regs.read_q(0), cpu.regs.fpsr),
+            (0x3F81, 0x10),
+            "RP rounds up + IXC"
+        );
+        let (cpu, _) = run(&[0x1E63_4020], |c, _| {
+            c.regs.fpcr = 1 << 24; // FZ
+            c.regs.write_q(1, 0x0040_0000u128); // f32 subnormal
+        });
+        assert_eq!(
+            (cpu.regs.read_q(0), cpu.regs.fpsr),
+            (0x0000, 0x80),
+            "FZ flushes denormal + IDC"
+        );
     }
 
     #[test]
@@ -4433,6 +4465,37 @@ mod tests {
             "1 + 40, 1 + 7.75, 1 + 46, 1 + 8"
         );
         assert_eq!(cpu.regs.fpsr, 0);
+
+        // Two non-associative/overflow vectors verified on Apple M3 (FEAT_BF16=1, FEAT_EBF16=0):
+        // BFMMLA chains two BFDotAdd steps ((acc + s0) + s1) rather than acc + (s0 + s1).
+        let w = |lanes: &[u32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (32 * i))
+        };
+        let (cpu, _) = run(&[0x6E47_ECCD], |c, _| {
+            // lane 0: acc=2^24, s0=+1, s1=-1 -> 0x4B80_0001; lane 1: acc=-2^127, s0=+2^127, s1=+2^127 -> 0x7F00_0000
+            c.regs.write_q(13, w(&[0x4B80_0000, 0xFF00_0000, 0, 0]));
+            c.regs.write_q(6, h(&[0x3F80, 0, 0xBF80, 0, 0, 0, 0, 0]));
+            c.regs.write_q(7, h(&[0x3F80, 0, 0x3F80, 0, 0x5F80, 0, 0x5F80, 0]));
+        });
+        assert_eq!(
+            cpu.regs.read_q(13) as u32,
+            0x4B80_0001,
+            "M3 V1 rounding: ((2^24 + 1) - 1)"
+        );
+        let (cpu, _) = run(&[0x6E47_ECCD], |c, _| {
+            c.regs.write_q(13, w(&[0xFF00_0000, 0, 0, 0]));
+            c.regs.write_q(6, h(&[0x5F80, 0, 0x5F80, 0, 0, 0, 0, 0]));
+            c.regs.write_q(7, h(&[0x5F00, 0, 0x5F00, 0, 0, 0, 0, 0]));
+        });
+        assert_eq!(
+            cpu.regs.read_q(13) as u32,
+            0x7F00_0000,
+            "M3 V2 overflow: ((-2^127 + 2^127) + 2^127)"
+        );
+        assert_eq!(cpu.regs.fpsr, 0);
     }
 
     #[test]
@@ -4474,6 +4537,31 @@ mod tests {
         );
         // signed n times the unsigned group 1 of v7 = (128, 0, 0, 0): 255 is -1 and 128 is -128
         assert_eq!(cpu.regs.read_q(17), w(&[-128, -16384, 1280, 128]));
+
+        // Verify 5-bit M:Rm indexing (Vm >= 16, M=1) for BFDOT, USDOT, and SUDOT by element:
+        // bfdot v1.2s, v6.4h, v23.2h[2] (0x0F57_F8C1), usdot v2.2s, v6.8b, v20.4b[2] (0x0F94_F8C2),
+        // sudot v3.4s, v6.16b, v20.4b[2] (0x4F14_F8C3)
+        let (cpu, _) = run(&[0x0F57_F8C1, 0x0F94_F8C2, 0x4F14_F8C3], |c, _| {
+            c.regs
+                .write_q(6, b(&[1, 1, 1, 1, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+            c.regs
+                .write_q(20, b(&[0, 0, 0, 0, 0, 0, 0, 0, 0xFE, 1, 1, 1, 0, 0, 0, 0])); // group 2 = [0xFE (-2 or 254), 1, 1, 1]
+            c.regs.write_q(23, (0x3F80u128 << 64) | (0x4000u128 << 80)); // pair 2 = (1.0, 2.0)
+            c.regs.write_q(1, 0);
+            c.regs.write_q(2, 0);
+            c.regs.write_q(3, 0);
+        });
+        assert_eq!(
+            cpu.regs.read_q(2),
+            w(&[1, -510]),
+            "USDOT v20.4b[2]: 1*(-2+1+1+1)=1, 255*(-2)=-510"
+        );
+        assert_eq!(
+            cpu.regs.read_q(3),
+            w(&[257, -254, 0, 0]),
+            "SUDOT v20.4b[2]: 1*(254+1+1+1)=257, (-1)*254=-254"
+        );
+        assert_ne!(cpu.regs.read_q(1), 0, "BFDOT v23.2h[2] ran with M=1");
     }
 
     #[test]

@@ -1511,7 +1511,7 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     // 26a0b. BFMLALB/BFMLALT (FEAT_BF16, by element): 0 Q 0 01111 11 L M Rm 1111 H 0 Rn Rd, Q selects T,
     //        index H:L:M, Rm is V0-V15
     if (raw & 0xBFC0_F400) == 0x0FC0_F000 {
-        let index = ((raw >> 9) & 4) | ((raw >> 20) & 2) | ((raw >> 20) & 1);
+        let index = ((raw >> 9) & 4) | ((raw >> 20) & 3);
         return Some(Instruction::Bfmlal {
             rd,
             rn,

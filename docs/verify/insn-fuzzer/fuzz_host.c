@@ -18,15 +18,30 @@
 #ifdef __APPLE__
 #include <pthread.h>
 #include <libkern/OSCacheControl.h>
+#include <sys/sysctl.h>
 #define SYM "_"          /* Mach-O prefixes C symbols with an underscore */
 #define JIT_WRITE(on) pthread_jit_write_protect_np(!(on))
 #define JIT_FLAGS MAP_JIT
 #define ICACHE(p, n) sys_icache_invalidate((p), (n))
+static int host_has_feature(const char *sysctl_name, unsigned long hwcap2_bit) {
+    (void)hwcap2_bit;
+    int v = 0;
+    size_t sz = sizeof(v);
+    return sysctlbyname(sysctl_name, &v, &sz, NULL, 0) == 0 && v != 0;
+}
 #else  /* Linux aarch64: an anonymous RWX mapping is enough, no MAP_JIT or write-protect toggle */
+#include <sys/auxv.h>
+#ifndef AT_HWCAP2
+#define AT_HWCAP2 26
+#endif
 #define SYM ""
 #define JIT_WRITE(on) ((void)(on))
 #define JIT_FLAGS 0
 #define ICACHE(p, n) __builtin___clear_cache((char *)(p), (char *)(p) + (n))
+static int host_has_feature(const char *sysctl_name, unsigned long hwcap2_bit) {
+    (void)sysctl_name;
+    return (getauxval(AT_HWCAP2) & hwcap2_bit) != 0;
+}
 #endif
 
 // Context layout (bytes): in.x @0, in.nzcv @248, in.v @256, out.x @768, out.nzcv @1016, out.fpsr @1024,
@@ -440,6 +455,16 @@ int main(int argc, char **argv) {
         fprintf(stderr, "fuzz_host corpus=edge words=%d executed=%llu undefined(SIGILL)=%llu\n", nops,
                 (unsigned long long)nt, (unsigned long long)nu);
         return 0;
+    }
+    {
+        int missing_bf16 = !host_has_feature("hw.optional.arm.FEAT_BF16", 1ul << 14);
+        int missing_i8mm = !host_has_feature("hw.optional.arm.FEAT_I8MM", 1ul << 13);
+        if (missing_bf16 || missing_i8mm) {
+            printf("F missing=%s%s%s\n",
+                   missing_bf16 ? "bf16" : "",
+                   (missing_bf16 && missing_i8mm) ? "," : "",
+                   missing_i8mm ? "i8mm" : "");
+        }
     }
     for (uint64_t n = 0; n < count; n++) {
         uint32_t w;

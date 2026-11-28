@@ -38,8 +38,15 @@ pub struct Case {
     pub v_out: [u128; 32],
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct HostMissing {
+    pub bf16: bool,
+    pub i8mm: bool,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Line {
+    HostMissing(HostMissing),
     Undefined(u32),
     Test(Box<Case>),
 }
@@ -59,6 +66,29 @@ fn bounded_hex(t: &mut std::str::SplitWhitespace, bits: u32) -> Result<u128, Str
 pub fn parse_line(line: &str) -> Result<Line, String> {
     let mut t = line.split_whitespace();
     match t.next() {
+        Some("F") => {
+            let Some(spec) = t.next() else {
+                return Err("missing feature list after F".into());
+            };
+            if t.next().is_some() {
+                return Err("extra fields after F line".into());
+            }
+            let Some(list) = spec.strip_prefix("missing=") else {
+                return Err(format!("bad F spec: {spec}"));
+            };
+            if list.is_empty() {
+                return Err("empty F missing= list".into());
+            }
+            let mut missing = HostMissing::default();
+            for feat in list.split(',') {
+                match feat {
+                    "bf16" => missing.bf16 = true,
+                    "i8mm" => missing.i8mm = true,
+                    _ => return Err(format!("unknown host feature in F line: {feat}")),
+                }
+            }
+            Ok(Line::HostMissing(missing))
+        }
         Some("U") => {
             let word = bounded_hex(&mut t, 32)? as u32;
             if t.next().is_some() {
@@ -637,9 +667,28 @@ fn runs_undefined(word: u32) -> bool {
     matches!(exec(Engine::Interp, word, &init).0, Exec::Done(st) if st.exit == "svc 0")
 }
 
+/// Returns the optional ISA feature required to execute `word` on hardware, if it belongs to an
+/// extension that older ARM64 hosts (e.g. Apple M1) lack while `ounce-core` implements it.
+fn word_optional_feature(word: u32) -> Option<&'static str> {
+    match decode(word) {
+        Instruction::Bfcvt { .. }
+        | Instruction::Bfcvtn { .. }
+        | Instruction::Bfmlal { .. }
+        | Instruction::Bfdot { .. }
+        | Instruction::Bfmmla { .. } => Some("bf16"),
+        Instruction::SimdMmla { .. } => Some("i8mm"),
+        Instruction::SimdByElement {
+            op: crate::cpu::instructions::SimdElemOp::Dot { n_signed, m_signed },
+            ..
+        } if n_signed != m_signed => Some("i8mm"),
+        _ => None,
+    }
+}
+
 #[derive(Default)]
 struct Tally {
     host_undefined: u64,
+    host_lacks_feature: u64,
     emu_runs_undefined: u64,
     executed: u64,
     matched: u64,
@@ -785,6 +834,7 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     let mut t = Tally::default();
+    let mut host_missing = HostMissing::default();
     let mut native_cases = 0u64;
     let mut mism_classes: BTreeMap<u32, (u64, u32)> = BTreeMap::new();
     let mut unimpl_classes: BTreeMap<u32, (u64, u32)> = BTreeMap::new();
@@ -810,12 +860,28 @@ pub fn run(args: &[String]) -> i32 {
             }
         };
         match parsed {
+            Line::HostMissing(m) => {
+                host_missing.bf16 |= m.bf16;
+                host_missing.i8mm |= m.i8mm;
+            }
             Line::Undefined(w) => {
-                record(n + 1, 0, w, "host-undefined", false, "");
                 t.host_undefined += 1;
                 if runs_undefined(w) {
-                    t.emu_runs_undefined += 1;
-                    accepts.entry(class(w)).or_insert((0, w)).0 += 1;
+                    let host_lacks = match word_optional_feature(w) {
+                        Some("bf16") => host_missing.bf16,
+                        Some("i8mm") => host_missing.i8mm,
+                        _ => false,
+                    };
+                    if host_lacks {
+                        record(n + 1, 0, w, "host-lacks-feature", false, "");
+                        t.host_lacks_feature += 1;
+                    } else {
+                        record(n + 1, 0, w, "host-undefined", false, "");
+                        t.emu_runs_undefined += 1;
+                        accepts.entry(class(w)).or_insert((0, w)).0 += 1;
+                    }
+                } else {
+                    record(n + 1, 0, w, "host-undefined", false, "");
                 }
             }
             Line::Test(c) => {
@@ -932,6 +998,9 @@ pub fn run(args: &[String]) -> i32 {
         "  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: {}",
         t.fpsr_exc_only
     );
+    if t.host_lacks_feature > 0 {
+        println!("host lacks optional feature (skipped): {}", t.host_lacks_feature);
+    }
     println!(
         "emulator runs a word the host calls UNDEFINED: {}",
         t.emu_runs_undefined
@@ -1373,5 +1442,50 @@ mod tests {
     fn unimplemented_words_are_reported_as_such() {
         let l = line(0x0000_0000, &[], &[], 0, 0, 0);
         assert_eq!(replay(&case(&l)), Outcome::Unimplemented);
+    }
+
+    #[test]
+    fn host_missing_feature_header_skips_only_declared_optional_extensions() {
+        assert_eq!(
+            parse_line("F missing=bf16,i8mm").unwrap(),
+            Line::HostMissing(HostMissing { bf16: true, i8mm: true })
+        );
+        assert_eq!(
+            parse_line("F missing=bf16").unwrap(),
+            Line::HostMissing(HostMissing {
+                bf16: true,
+                i8mm: false
+            })
+        );
+        assert!(parse_line("F").is_err());
+        assert!(parse_line("F missing=").is_err());
+        assert!(parse_line("F missing=sve").is_err());
+        assert!(parse_line("F missing=bf16 extra").is_err());
+
+        // BFDOT (bf16), USDOT (i8mm), SDOT (dotprod, NOT i8mm), MOV X0,#1 (base)
+        assert_eq!(word_optional_feature(0x6E47_FCCB), Some("bf16"));
+        assert_eq!(word_optional_feature(0x4E87_9CCE), Some("i8mm"));
+        assert_eq!(word_optional_feature(0x4E87_94CE), None);
+        assert_eq!(word_optional_feature(0xD280_0020), None);
+
+        let dir = std::env::temp_dir();
+        let pid = std::process::id();
+        // Declared missing bf16+i8mm: U of BFDOT + USDOT passes (exit 0)
+        let ok_path = dir.join(format!("ounce_fuzz_missing_ok_{pid}.trace"));
+        std::fs::write(&ok_path, "F missing=bf16,i8mm\nU 6e47fccb\nU 4e879cce\n").unwrap();
+        assert_eq!(run(&[ok_path.to_str().unwrap().to_string()]), 0);
+        std::fs::remove_file(&ok_path).unwrap();
+
+        // Without F header: U of BFDOT fails as emu_runs_undefined (exit 1)
+        let strict_path = dir.join(format!("ounce_fuzz_missing_strict_{pid}.trace"));
+        std::fs::write(&strict_path, "U 6e47fccb\n").unwrap();
+        assert_eq!(run(&[strict_path.to_str().unwrap().to_string()]), 1);
+        std::fs::remove_file(&strict_path).unwrap();
+
+        // Even with F missing=bf16,i8mm, U of SDOT or MOV must still fail (exit 1)
+        let bad_path = dir.join(format!("ounce_fuzz_missing_bad_{pid}.trace"));
+        std::fs::write(&bad_path, "F missing=bf16,i8mm\nU 4e8794ce\n").unwrap();
+        assert_eq!(run(&[bad_path.to_str().unwrap().to_string()]), 1);
+        std::fs::remove_file(&bad_path).unwrap();
     }
 }
