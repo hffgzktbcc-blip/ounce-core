@@ -1,0 +1,17 @@
+# SGP4 bigtech rerun, 2026-11-28 22:26 SAST (UTC+0200)
+# host: Apple M3 MacBook, macOS 26.6.2 (25G83), 8 cores
+# ounce-core binary: cargo build --release --locked --features native-jit at f44a7e8 (rustc 1.98.0)
+# command: ZIG=<zig 0.17.1> OUNCE_CORE=<that binary> WORK=<tmp> scripts/verify/sgp4.sh
+host: Darwin arm64; zig: 0.17.1; work: /tmp/oak12-bt/w-sgp4
+sgp4 at b915de601a4af0a9c1c61c54efaafb168ba3defb; SGP4-VER.TLE sha256 42566494ca3b11313570dbf2c493a2dd13a93f86aa8f03d57a54e46d9db72c01 (110 lines)
+points=1221 ok=1075
+146
+native oracle: 1222 lines, identical to expected.txt
+sgp4_O2 interpreter rc=0 oracle-identical=962/1222 same-as-out.sgp4_O2.interpreter=yes time=1s [run-elf] engine=Interpreter instructions=23302943 syscalls=155
+sgp4_O2 tier3 rc=0 oracle-identical=962/1222 same-as-out.sgp4_O2.interpreter=yes time=1s [run-elf] engine=Tier-3 instructions=23302943 syscalls=155
+sgp4_O2 tier4 rc=0 oracle-identical=962/1222 same-as-out.sgp4_O2.interpreter=yes time=2s [run-elf] engine=Tier-4 instructions=23302943 syscalls=155
+sgp4_O3 interpreter rc=0 oracle-identical=962/1222 same-as-out.sgp4_O2.interpreter=yes time=1s [run-elf] engine=Interpreter instructions=24011089 syscalls=155
+sgp4_O3 tier3 rc=0 oracle-identical=962/1222 same-as-out.sgp4_O2.interpreter=yes time=1s [run-elf] engine=Tier-3 instructions=24011089 syscalls=155
+sgp4_O3 tier4 rc=0 oracle-identical=962/1222 same-as-out.sgp4_O2.interpreter=yes time=2s [run-elf] engine=Tier-4 instructions=24011089 syscalls=155
+RESULT: sgp4 b915de601a4af0a9c1c61c54efaafb168ba3defb: all 6 runs (2 builds x 3 engines) exit 0 and are byte-identical to each other; 962/1222 lines identical to the macOS-libm oracle
+# exit=0 wall=14s
