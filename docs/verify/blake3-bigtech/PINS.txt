@@ -1,0 +1,20 @@
+BLAKE3 bigtech rerun: pins (recorded 28 Nov 2026 by hffgzktbcc-blip)
+
+Upstream:        https://github.com/BLAKE3-team/BLAKE3
+Commit:          657284b1fa4c4378aa7422b4450dcb5c2c9052fc  (git describe: 1.8.7-4-g657284b; the 7-char pin 657284b on docs/verify/bigtech-2026-11-23.md)
+Driver:          docs/verify/bigtech/blake3_drv.c (deterministic; no seeds or arguments)
+Build script:    docs/verify/bigtech/run_b3.sh (unchanged)
+Guest compiler:  Zig 0.17.1 (zig cc = clang 22.1.8), aarch64-macos tarball sha256
+                 75f1bc7a1e9852f17ec9a0c1895f767c4ec56d46bc8a834920eece1d0359dd8d (matches ziglang.org/download/index.json)
+                 Guest builds: -target aarch64-linux-musl -static -no-pie, -O2 and -O3 -mcpu=apple_m1, -DBLAKE3_USE_NEON=1
+Oracle compiler: Apple clang 21.0.0 (clang-2100.4.1.1), -O2 -DBLAKE3_USE_NEON=1, run natively
+Host:            Apple M3, macOS 26.6.2 (25G83)
+ounce-core:      release build with --features native-jit at f44a7e8 (rustc 1.98.0)
+expected.txt:    822 lines, sha256 1f19d559a0bb587d7a56689011730b16d3d25444595807824bbefdabccc75417
+                 The native oracle output (b3.ref) from the run in run-2026-11-28.log; not edited.
+
+x86-64 hosts: run_b3.sh's oracle line uses BLAKE3's NEON code and only builds on an AArch64 host.
+BLAKE3's portable C should give the same hashes, so an x86-64 oracle could be built like this
+(NOT run for this record; untested):
+  clang -O2 -I$B -DBLAKE3_NO_SSE2 -DBLAKE3_NO_SSE41 -DBLAKE3_NO_AVX2 -DBLAKE3_NO_AVX512 \
+    blake3_drv.c $B/blake3.c $B/blake3_dispatch.c $B/blake3_portable.c -o b3_native
