@@ -89,10 +89,14 @@ void cmain(void) {
     i64 at = mmap6(0, 4096, PROT_READ | PROT_EXEC, MAP_PRIVATE, c1, 0);
     sys3(SYS_close, c1, 0, 0);
     int (*fn)(void) = (int (*)(void))at;
-    int a = fn(), b = fn();
+    /* Call enough times to cross Tier-3 (4) and Tier-4 (64) hot thresholds before remapping. */
+    int ok = 1;
+    for (int i = 0; i < 100; i++) {
+        if (fn() != 42) ok = 0;
+    }
     i64 again = mmap6((u64)at, 4096, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_FIXED, c2, 0);
     int c = fn();
-    check(at > 0 && a == 42 && b == 42, "code runs from an executable file mapping after its fd is closed");
+    check(at > 0 && ok, "code runs from an executable file mapping after its fd is closed");
     check(again == at && c == 7, "a MAP_FIXED mapping of another file replaces the code");
     quit(0);
 }

@@ -1892,6 +1892,83 @@ fn writable_shared_file_mapping_is_reported_as_unsupported() {
         panic!("a writable shared file mapping must not succeed")
     };
     assert!(why.contains("MAP_SHARED and PROT_WRITE"), "{why}");
+    // Invalid len or MAP_FIXED address must return -EINVAL rather than aborting as Unimplemented.
+    assert_eq!(
+        proc.dispatch(222, [0, 0, 3, 1, fd as u64, 0], &mut mem, &mut out),
+        Outcome::Return(-super::syscalls::EINVAL)
+    );
+    assert_eq!(
+        proc.dispatch(222, [0x123, 4096, 3, 0x11, fd as u64, 0], &mut mem, &mut out),
+        Outcome::Return(-super::syscalls::EINVAL)
+    );
+    // Negative off_t (-4096) overflows file offset; unknown MAP_SHARED_VALIDATE flag is EOPNOTSUPP.
+    assert_eq!(
+        proc.dispatch(222, [0, 4096, 1, 2, fd as u64, (-4096i64) as u64], &mut mem, &mut out),
+        Outcome::Return(-super::syscalls::EOVERFLOW)
+    );
+    assert_eq!(
+        proc.dispatch(222, [0, 4096, 1, 3 | 0x80000, fd as u64, 0], &mut mem, &mut out),
+        Outcome::Return(-super::syscalls::EOPNOTSUPP)
+    );
+}
+
+#[test]
+fn file_mmap_populates_full_page_for_unaligned_len_handles_host_root_and_umask() {
+    use super::syscalls::{Outcome, Process};
+    use crate::mmu::{Memory, Permission};
+    const AT_FDCWD: u64 = -100i64 as u64;
+    let base = std::env::temp_dir().join(format!("ounce_mmap_host_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(base.join("lib")).unwrap();
+    let mut payload = vec![0x5Au8; 4096];
+    payload[0] = 0x11;
+    payload[2000] = 0x77;
+    std::fs::write(base.join("lib/sample.bin"), &payload).unwrap();
+
+    let mut proc = Process::new(0x1000);
+    proc.set_host_root(&base).unwrap();
+    let mut mem = Memory::new();
+    mem.map_range(0x10000, 0x2000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+
+    // umask defaults to 0o022, returns previous mask, and masks newly created scratch file modes.
+    assert_eq!(
+        proc.dispatch(166, [0o077, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0o022)
+    );
+    assert_eq!(
+        proc.dispatch(166, [0o027, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0o077)
+    );
+    mem.write_bytes(0x10000, b"/tmp/masked.bin\0").unwrap();
+    let Outcome::Return(sfd) = proc.dispatch(56, [AT_FDCWD, 0x10000, 0o102, 0o666, 0, 0], &mut mem, &mut out) else {
+        panic!("openat scratch")
+    };
+    assert!(sfd >= 3);
+    assert_eq!(
+        proc.dispatch(80, [sfd as u64, 0x11000, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    let st_mode = mem.read_u32(0x11000 + 16).unwrap();
+    assert_eq!(st_mode & 0o777, 0o666 & !0o027);
+
+    // Mapping 100 bytes of a 4096-byte --root file must populate the full 4 KiB page (like Linux do_mmap).
+    mem.write_bytes(0x10000, b"/lib/sample.bin\0").unwrap();
+    let Outcome::Return(hfd) = proc.dispatch(56, [AT_FDCWD, 0x10000, 0, 0, 0, 0], &mut mem, &mut out) else {
+        panic!("openat host")
+    };
+    assert!(hfd >= 3);
+    let Outcome::Return(addr) = proc.dispatch(222, [0, 100, 1, 2, hfd as u64, 0], &mut mem, &mut out) else {
+        panic!("mmap host")
+    };
+    assert!(addr > 0);
+    let mut first = [0u8; 1];
+    let mut mid = [0u8; 1];
+    mem.read_bytes(addr as u64, &mut first).unwrap();
+    mem.read_bytes(addr as u64 + 2000, &mut mid).unwrap();
+    assert_eq!(first[0], 0x11);
+    assert_eq!(mid[0], 0x77);
+    let _ = std::fs::remove_dir_all(&base);
 }
 
 /// A futex wait that no thread can ever wake hangs on Linux; the runner stops it with a diagnosis instead.

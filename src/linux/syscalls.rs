@@ -14,7 +14,6 @@ pub const ENOMEM: i64 = 12;
 pub const EACCES: i64 = 13;
 pub const EFAULT: i64 = 14;
 pub const EEXIST: i64 = 17;
-#[allow(dead_code)]
 pub const ENODEV: i64 = 19;
 pub const ENOTDIR: i64 = 20;
 pub const EISDIR: i64 = 21;
@@ -27,6 +26,8 @@ pub const ENOSPC: i64 = 28;
 pub const ESPIPE: i64 = 29;
 pub const ENAMETOOLONG: i64 = 36;
 pub const ENOSYS: i64 = 38;
+pub const EOVERFLOW: i64 = 75;
+pub const EOPNOTSUPP: i64 = 95;
 
 pub const SYS_FCNTL: u64 = 25;
 pub const SYS_IOCTL: u64 = 29;
@@ -180,7 +181,7 @@ pub struct Process {
     brk_mapped_end: u64,
     mmap_next: u64,
     mmap_total: u64,
-    /// Virtual anonymous mappings, including unbacked PROT_NONE reservations.
+    /// Virtual mappings (anonymous and file-backed), including unbacked PROT_NONE reservations.
     mappings: Vec<(u64, u64)>,
     pub(super) signal_mask: u64,
     /// Signals raised with `tgkill` while blocked, waiting for `rt_sigprocmask` to unblock them (bit `n - 1`).
@@ -1596,10 +1597,11 @@ impl Process {
         if !offset.is_multiple_of(PAGE) {
             return Ok(-EINVAL);
         }
-        let contents = if flags & MAP_ANONYMOUS == 0 {
-            match self.mapped_file_bytes(fd, offset, len, prot, flags) {
-                Ok(bytes) => Some(bytes),
-                Err(result) => return result,
+        let is_file = flags & MAP_ANONYMOUS == 0;
+        let open_file = if is_file {
+            match u32::try_from(fd).ok().and_then(|fd| self.files.get(&fd)) {
+                Some(file) => Some((file.flags, file.kind)),
+                None => return Ok(-EBADF),
             }
         } else {
             None
@@ -1608,8 +1610,16 @@ impl Process {
             return Ok(-EINVAL);
         }
         let len = align_up(len);
+        let file_map = if let Some((file_flags, file_kind)) = open_file {
+            match self.validate_file_mmap(file_flags, file_kind, offset, len, prot, flags) {
+                Ok(spec) => Some(spec),
+                Err(errno) => return Ok(errno),
+            }
+        } else {
+            None
+        };
         // A file mapping holds its bytes even while PROT_NONE; an anonymous one is only a reservation.
-        let backed = if prot == 0 && contents.is_none() { 0 } else { len };
+        let backed = if prot == 0 && file_map.is_none() { 0 } else { len };
         if backed > MAX_MMAP_CALL {
             return Ok(-ENOMEM);
         }
@@ -1650,10 +1660,19 @@ impl Process {
         if self.mmap_total.saturating_sub(old) + backed > MAX_MMAP_TOTAL {
             return Ok(-ENOMEM);
         }
+        if let Some((_, _, _, true)) = file_map {
+            return Err(format!(
+                "mmap of file descriptor {fd} with MAP_SHARED and PROT_WRITE (stores would not reach the file)"
+            ));
+        }
         mmu.unmap_range(base, len as usize);
         self.forget_mapping(base, base + len);
         self.mappings.push((base, base + len));
-        if let Some(bytes) = &contents {
+        if let Some((ino, start, end, false)) = file_map {
+            let bytes = match self.inodes.get(&ino).map(|inode| &inode.kind) {
+                Some(InodeKind::Regular(data) | InodeKind::HostFile(data)) => &data[start..end],
+                _ => &[],
+            };
             mmu.map_range(base, len as usize, Permission::READ_WRITE);
             mmu.write_bytes(base, bytes)
                 .map_err(|e| format!("mmap: copying the file: {e}"))?;
@@ -1666,48 +1685,45 @@ impl Process {
         Ok(base as i64)
     }
 
-    /// The bytes a mapping of descriptor `fd` from page-aligned `offset` starts with: the file's next `len`
-    /// bytes, or fewer where it ends (the rest of the mapping reads as zeros). The mapping is a copy made now,
-    /// which is what `MAP_PRIVATE` promises; a read-only `MAP_SHARED` mapping is the same copy, so it does not
-    /// see later writes to the file. `Err` holds the syscall's result instead: a negative errno, or the one
-    /// mode not implemented (a writable `MAP_SHARED` mapping, whose stores would have to reach the file).
-    fn mapped_file_bytes(
+    /// Validates a file-backed `mmap` request after `offset` alignment, `fd` lookup, and `len` page-alignment,
+    /// returning `(ino, start, end, shared_write)` into the inode's byte slice. The mapping is a snapshot copy
+    /// (which is what `MAP_PRIVATE` promises; read-only `MAP_SHARED` uses the same copy and does not see later
+    /// writes). `shared_write` is returned so `sys_mmap` can report it as unsupported only after every errno check.
+    fn validate_file_mmap(
         &self,
-        fd: i64,
+        file_flags: u32,
+        file_kind: FileKind,
         offset: u64,
         len: u64,
         prot: u64,
         flags: u64,
-    ) -> Result<Vec<u8>, Result<i64, String>> {
-        let file = u32::try_from(fd)
-            .ok()
-            .and_then(|fd| self.files.get(&fd))
-            .ok_or(Ok(-EBADF))?;
-        // the order of Linux's do_mmap checks: mapping type, access mode, then whether the file can be mapped
+    ) -> Result<(u64, usize, usize, bool), i64> {
+        // Linux's do_mmap order: mapping type/flags, offset overflow, access mode, then mappable file kind.
         let kind = flags & MAP_TYPE;
         if kind != MAP_SHARED && kind != MAP_PRIVATE && kind != MAP_SHARED_VALIDATE {
-            return Err(Ok(-EINVAL));
+            return Err(-EINVAL);
         }
-        let access = file.flags & O_ACCMODE;
+        if kind == MAP_SHARED_VALIDATE && flags & !(MAP_TYPE | MAP_FIXED) != 0 {
+            return Err(-EOPNOTSUPP);
+        }
+        if offset > (i64::MAX as u64).saturating_sub(len) {
+            return Err(-EOVERFLOW);
+        }
+        let access = file_flags & O_ACCMODE;
         let shared_write = kind != MAP_PRIVATE && prot & PROT_WRITE != 0;
         if access == O_WRONLY || shared_write && access != O_RDWR {
-            return Err(Ok(-EACCES));
+            return Err(-EACCES);
         }
-        let FileKind::Inode(ino) = file.kind else {
-            return Err(Ok(-ENODEV));
+        let FileKind::Inode(ino) = file_kind else {
+            return Err(-ENODEV);
         };
         let data = match self.inodes.get(&ino).map(|inode| &inode.kind) {
             Some(InodeKind::Regular(data) | InodeKind::HostFile(data)) => data,
-            _ => return Err(Ok(-ENODEV)),
+            _ => return Err(-ENODEV),
         };
-        if shared_write {
-            return Err(Err(format!(
-                "mmap of file descriptor {fd} with MAP_SHARED and PROT_WRITE (stores would not reach the file)"
-            )));
-        }
         let size = data.len() as u64;
-        let (start, end) = (offset.min(size), offset.saturating_add(len).min(size));
-        Ok(data[start as usize..end as usize].to_vec())
+        let (start, end) = (offset.min(size) as usize, offset.saturating_add(len).min(size) as usize);
+        Ok((ino, start, end, shared_write))
     }
 
     fn sys_mprotect(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
@@ -2031,6 +2047,7 @@ pub fn syscall_name(nr: u64) -> Option<&'static str> {
         129 => "kill",
         131 => "tgkill",
         132 => "sigaltstack",
+        166 => "umask",
         168 => "getcpu",
         169 => "gettimeofday",
         173 => "getppid",
@@ -2041,6 +2058,7 @@ pub fn syscall_name(nr: u64) -> Option<&'static str> {
         178 => "gettid",
         220 => "clone",
         221 => "execve",
+        222 => "mmap",
         226 => "mprotect",
         233 => "madvise",
         261 => "prlimit64",
