@@ -10,6 +10,7 @@ const FAKELD: &[u8] = include_bytes!("../../tests/linux-elf/bin/fakeld.elf");
 const DYNMAIN: &[u8] = include_bytes!("../../tests/linux-elf/bin/dynmain.elf");
 const READFILE: &[u8] = include_bytes!("../../tests/linux-elf/bin/readfile.elf");
 const THREADS: &[u8] = include_bytes!("../../tests/linux-elf/bin/threads.elf");
+const MAPFILE: &[u8] = include_bytes!("../../tests/linux-elf/bin/mapfile.elf");
 const MEMORY: &[u8] = include_bytes!("../../tests/linux-elf/bin/memory.elf");
 const BADSYS: &[u8] = include_bytes!("../../tests/linux-elf/bin/badsyscall.elf");
 const BASIC_MATH: &[u8] = include_bytes!("../../tests/linux-elf/bin/basic_math.elf");
@@ -1835,6 +1836,62 @@ fn guest_threads_share_memory_block_on_futexes_and_join() {
         assert_eq!(r.stop, Stop::Exited(0), "{t:?}: {r:?}\n{out}");
         assert_eq!(out, want, "{t:?}");
     }
+}
+
+/// File-backed `mmap` of scratch files (`tests/linux-elf/src/mapfile.c`): private copies, offsets, the zero tail,
+/// PROT_NONE then `mprotect`, a read-only shared mapping, code run from a mapped file and replaced by a MAP_FIXED
+/// mapping of another (the engines must drop the old translation), and the errors in Linux's order. The expected
+/// output is what the same ELF prints under `qemu-aarch64` on Linux with stdout a pipe.
+#[test]
+fn mmap_of_a_file_maps_its_bytes_and_runs_its_code() {
+    let want = [
+        "private mapping has the file bytes",
+        "tail page is zero past the end of the file",
+        "a store to a private mapping leaves the file alone",
+        "offset 4096 maps the second page",
+        "PROT_NONE mapping keeps the bytes for mprotect",
+        "read-only shared mapping",
+        "writable shared mapping of a read-only fd: EACCES",
+        "mapping a write-only fd: EACCES",
+        "mapping write-only stdout: EACCES",
+        "mapping a directory: ENODEV",
+        "mapping a closed fd: EBADF",
+        "unaligned offset: EINVAL",
+        "neither MAP_SHARED nor MAP_PRIVATE: EINVAL",
+        "code runs from an executable file mapping after its fd is closed",
+        "a MAP_FIXED mapping of another file replaces the code",
+    ]
+    .map(|line| format!("{line}: ok\n"))
+    .concat();
+    for t in TIERS {
+        let (r, out) = go(MAPFILE, &["mapfile"], t);
+        assert_eq!(r.stop, Stop::Exited(0), "{t:?}: {r:?}\n{out}");
+        assert_eq!(out, want, "{t:?}");
+    }
+}
+
+/// A writable MAP_SHARED mapping of a file would need stores to reach the file: the run stops and says so rather
+/// than handing out a private copy.
+#[test]
+fn writable_shared_file_mapping_is_reported_as_unsupported() {
+    use super::syscalls::{Outcome, Process};
+    use crate::mmu::{Memory, Permission};
+    const AT_FDCWD: u64 = -100i64 as u64;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x10000, 0x1000, Permission::READ_WRITE);
+    mem.write_bytes(0x10000, b"/tmp/shared.bin\0").unwrap();
+    let mut out = Capture::default();
+    // openat(AT_FDCWD, path, O_RDWR | O_CREAT, 0644)
+    let Outcome::Return(fd) = proc.dispatch(56, [AT_FDCWD, 0x10000, 0o102, 0o644, 0, 0], &mut mem, &mut out) else {
+        panic!("openat")
+    };
+    assert!(fd >= 3, "{fd}");
+    // mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)
+    let Outcome::Unimplemented(why) = proc.dispatch(222, [0, 4096, 3, 1, fd as u64, 0], &mut mem, &mut out) else {
+        panic!("a writable shared file mapping must not succeed")
+    };
+    assert!(why.contains("MAP_SHARED and PROT_WRITE"), "{why}");
 }
 
 /// A futex wait that no thread can ever wake hangs on Linux; the runner stops it with a diagnosis instead.

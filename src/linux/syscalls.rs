@@ -15,6 +15,7 @@ pub const EACCES: i64 = 13;
 pub const EFAULT: i64 = 14;
 pub const EEXIST: i64 = 17;
 #[allow(dead_code)]
+pub const ENODEV: i64 = 19;
 pub const ENOTDIR: i64 = 20;
 pub const EISDIR: i64 = 21;
 pub const EINVAL: i64 = 22;
@@ -56,6 +57,7 @@ pub const SYS_SCHED_YIELD: u64 = 124;
 pub const SYS_RT_SIGACTION: u64 = 134;
 pub const SYS_RT_SIGPROCMASK: u64 = 135;
 pub const SYS_UNAME: u64 = 160;
+pub const SYS_UMASK: u64 = 166;
 pub const SYS_GETCPU: u64 = 168;
 pub const SYS_GETTIMEOFDAY: u64 = 169;
 pub const SYS_NANOSLEEP: u64 = 101;
@@ -137,6 +139,10 @@ struct OpenFile {
 }
 
 const MREMAP_MAYMOVE: u64 = 1;
+const MAP_SHARED: u64 = 1;
+const MAP_PRIVATE: u64 = 2;
+const MAP_SHARED_VALIDATE: u64 = 3;
+const MAP_TYPE: u64 = 0xf;
 const MAP_FIXED: u64 = 0x10;
 const MAP_ANONYMOUS: u64 = 0x20;
 const PROT_READ: u64 = 1;
@@ -194,6 +200,8 @@ pub struct Process {
     warned_clone_thread: bool,
     /// `--root=DIR` (canonical): guest paths outside the scratch area name files under it, read-only
     host_root: Option<std::path::PathBuf>,
+    /// The file mode creation mask (`umask`); new scratch files get `mode & !umask`
+    umask: u32,
 }
 
 impl Process {
@@ -287,6 +295,7 @@ impl Process {
             rng: RNG_SEED,
             warned_clone_thread: false,
             host_root: None,
+            umask: 0o022,
         }
     }
 
@@ -728,6 +737,7 @@ impl Process {
             }
             SYS_CLOCK_GETTIME => self.sys_clock_gettime(a[0], a[1], mmu),
             SYS_UNAME => sys_uname(a[0], mmu),
+            SYS_UMASK => std::mem::replace(&mut self.umask, a[0] as u32 & 0o777) as i64,
             SYS_SCHED_SETAFFINITY => sys_sched_setaffinity(a[0], a[1], a[2], mmu),
             SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(a[0], a[1], a[2], mmu),
             SYS_GETCPU => sys_getcpu(a[0], a[1], a[2], mmu),
@@ -861,7 +871,7 @@ impl Process {
                 Inode {
                     kind: InodeKind::Regular(Vec::new()),
                     ino,
-                    mode: 0o100000 | (mode & 0o777),
+                    mode: 0o100000 | (mode & 0o777 & !self.umask),
                     nlink: 1,
                 },
             );
@@ -1582,17 +1592,24 @@ impl Process {
     }
 
     fn sys_mmap(&mut self, a: [u64; 6], mmu: &mut Memory) -> Result<i64, String> {
-        let (addr, len, prot, flags, fd) = (a[0], a[1], a[2], a[3], a[4] as i64);
-        if flags & MAP_ANONYMOUS == 0 {
-            return Err(format!(
-                "mmap of file descriptor {fd} (only MAP_ANONYMOUS is supported), flags={flags:#x} at x0={addr:#x} len={len:#x}"
-            ));
+        let (addr, len, prot, flags, fd, offset) = (a[0], a[1], a[2], a[3], a[4] as i64, a[5]);
+        if !offset.is_multiple_of(PAGE) {
+            return Ok(-EINVAL);
         }
+        let contents = if flags & MAP_ANONYMOUS == 0 {
+            match self.mapped_file_bytes(fd, offset, len, prot, flags) {
+                Ok(bytes) => Some(bytes),
+                Err(result) => return result,
+            }
+        } else {
+            None
+        };
         if len == 0 || len > u64::MAX - (PAGE - 1) || prot & !7 != 0 {
             return Ok(-EINVAL);
         }
         let len = align_up(len);
-        let backed = if prot == 0 { 0 } else { len };
+        // A file mapping holds its bytes even while PROT_NONE; an anonymous one is only a reservation.
+        let backed = if prot == 0 && contents.is_none() { 0 } else { len };
         if backed > MAX_MMAP_CALL {
             return Ok(-ENOMEM);
         }
@@ -1636,12 +1653,61 @@ impl Process {
         mmu.unmap_range(base, len as usize);
         self.forget_mapping(base, base + len);
         self.mappings.push((base, base + len));
-        if backed != 0 {
+        if let Some(bytes) = &contents {
+            mmu.map_range(base, len as usize, Permission::READ_WRITE);
+            mmu.write_bytes(base, bytes)
+                .map_err(|e| format!("mmap: copying the file: {e}"))?;
+            mmu.protect_range(base, len as usize, protection(prot));
+        } else if backed != 0 {
             mmu.map_range(base, len as usize, protection(prot));
         }
         self.mmap_total = self.mmap_total.saturating_sub(old) + backed;
         self.mmap_next = self.mmap_next.max(base + len);
         Ok(base as i64)
+    }
+
+    /// The bytes a mapping of descriptor `fd` from page-aligned `offset` starts with: the file's next `len`
+    /// bytes, or fewer where it ends (the rest of the mapping reads as zeros). The mapping is a copy made now,
+    /// which is what `MAP_PRIVATE` promises; a read-only `MAP_SHARED` mapping is the same copy, so it does not
+    /// see later writes to the file. `Err` holds the syscall's result instead: a negative errno, or the one
+    /// mode not implemented (a writable `MAP_SHARED` mapping, whose stores would have to reach the file).
+    fn mapped_file_bytes(
+        &self,
+        fd: i64,
+        offset: u64,
+        len: u64,
+        prot: u64,
+        flags: u64,
+    ) -> Result<Vec<u8>, Result<i64, String>> {
+        let file = u32::try_from(fd)
+            .ok()
+            .and_then(|fd| self.files.get(&fd))
+            .ok_or(Ok(-EBADF))?;
+        // the order of Linux's do_mmap checks: mapping type, access mode, then whether the file can be mapped
+        let kind = flags & MAP_TYPE;
+        if kind != MAP_SHARED && kind != MAP_PRIVATE && kind != MAP_SHARED_VALIDATE {
+            return Err(Ok(-EINVAL));
+        }
+        let access = file.flags & O_ACCMODE;
+        let shared_write = kind != MAP_PRIVATE && prot & PROT_WRITE != 0;
+        if access == O_WRONLY || shared_write && access != O_RDWR {
+            return Err(Ok(-EACCES));
+        }
+        let FileKind::Inode(ino) = file.kind else {
+            return Err(Ok(-ENODEV));
+        };
+        let data = match self.inodes.get(&ino).map(|inode| &inode.kind) {
+            Some(InodeKind::Regular(data) | InodeKind::HostFile(data)) => data,
+            _ => return Err(Ok(-ENODEV)),
+        };
+        if shared_write {
+            return Err(Err(format!(
+                "mmap of file descriptor {fd} with MAP_SHARED and PROT_WRITE (stores would not reach the file)"
+            )));
+        }
+        let size = data.len() as u64;
+        let (start, end) = (offset.min(size), offset.saturating_add(len).min(size));
+        Ok(data[start as usize..end as usize].to_vec())
     }
 
     fn sys_mprotect(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
