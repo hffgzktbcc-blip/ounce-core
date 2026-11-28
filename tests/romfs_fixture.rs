@@ -1,5 +1,8 @@
+// Without the `nro` feature the NRO tests are compiled out, which leaves some of their helpers unused.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
 use std::process::Command;
 
+#[cfg(feature = "nro")]
 #[test]
 fn romfs_fixture_nro_calling_romfs_init_succeeds() {
     let nro_path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/romfs/romfs.nro");

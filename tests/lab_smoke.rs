@@ -1,5 +1,7 @@
 //! End to end: start `ounce-core ui`, upload a real NRO over HTTP, wait for the verdict.
 //! Emulator engines only (no host reference), so it runs on every CI host.
+// Without the `nro` feature the NRO tests are compiled out, which leaves some of their helpers unused.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -35,6 +37,7 @@ fn http(port: u16, method: &str, path: &str, token: Option<&str>, body: &[u8]) -
     )
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn uploads_a_program_and_reports_a_verdict() {
     let dir = std::env::temp_dir().join(format!("ounce-lab-smoke-{}", std::process::id()));

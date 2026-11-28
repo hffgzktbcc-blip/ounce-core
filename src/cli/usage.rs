@@ -193,13 +193,16 @@ pub(crate) fn print_usage() {
         "    {}--max-frames {}<N>        Exit with status 0 after N presented frames (headless runs count guest present calls)",
         s.green, s.reset
     );
-    println!(
-        "    {}--press {}<BTN@FRAME>     Hold a HID button for {} frames from presented frame FRAME; repeatable (e.g. --press PLUS@60)",
-        s.green,
-        s.reset,
-        loop_controls::PRESS_HOLD_FRAMES
-    );
-    println!("      valid buttons: {}", loop_controls::button_list());
+    #[cfg(feature = "nro")]
+    {
+        println!(
+            "    {}--press {}<BTN@FRAME>     Hold a HID button for {} frames from presented frame FRAME; repeatable (e.g. --press PLUS@60)",
+            s.green,
+            s.reset,
+            loop_controls::PRESS_HOLD_FRAMES
+        );
+        println!("      valid buttons: {}", loop_controls::button_list());
+    }
     println!();
     println!("  {}INSPECT AND REPLAY:{}", s.bold, s.reset);
     println!(
