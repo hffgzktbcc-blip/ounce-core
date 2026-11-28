@@ -1,7 +1,7 @@
 //! Local verification workbench: `ounce-core ui`.
 //!
 //! A small localhost-only web server (safe Rust, `std::net`, no new dependencies). The page it serves
-//! (`assets/lab/index.html`) lets a person drop a homebrew `.nro` or a static AArch64 Linux ELF; the server runs it on the real engines as
+//! (`assets/lab/index.html`) lets a person drop a homebrew `.nro` or an AArch64 Linux ELF; the server runs it on the real engines as
 //! child processes of this same binary and compares what each one did:
 //!
 //! * **Tier-3** and **Tier-4** always (`--cpu=tier3|tier4`, headless, with an instruction budget).
@@ -149,10 +149,10 @@ fn detect(bytes: &[u8]) -> Result<Format, String> {
         return if class == Some(2) && data == Some(1) && machine == Some(0xB7) {
             Ok(Format::Elf)
         } else {
-            Err("That is a Linux program, but not for 64-bit ARM (AArch64). Ounce Core can check static AArch64 Linux programs and Switch homebrew .nro files.".into())
+            Err("That is a Linux program, but not for 64-bit ARM (AArch64). Ounce Core can check AArch64 Linux programs and Switch homebrew .nro files.".into())
         };
     }
-    Err("That isn't a program Ounce Core can check. Choose a Switch homebrew .nro file or a static AArch64 Linux program (.elf).".into())
+    Err("That isn't a program Ounce Core can check. Choose a Switch homebrew .nro file or an AArch64 Linux program (.elf).".into())
 }
 
 /// One engine's run of the program.

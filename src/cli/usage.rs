@@ -156,7 +156,7 @@ pub(crate) fn print_usage() {
         s.green, s.reset
     );
     println!(
-        "    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic, --dump-regs)",
+        "    {}run-elf{} <elf> [-- args]       Run an AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic, --dump-regs, --root=DIR)",
         s.green, s.reset
     );
     println!(
@@ -322,7 +322,7 @@ pub(crate) fn print_specs() {
     print_row(
         &s,
         "Architecture        : ",
-        "Single-threaded AArch64 execution for bounded program testing",
+        "Bounded program testing; guest threads run one at a time",
     );
     print_row(
         &s,

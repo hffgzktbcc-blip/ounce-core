@@ -3,7 +3,7 @@
 //!
 //! - `.nro` targets run on each engine in one-instruction slices with `OUNCE_TRACE` set (see `trace.rs`),
 //!   build `tools/hwcheck`, and replay sampled register-only instructions on the AArch64 host CPU.
-//! - Static AArch64 Linux ELF targets (`\x7fELF`) run via `ounce-core run-elf --deterministic` across
+//! - AArch64 Linux ELF targets (`\x7fELF`) run via `ounce-core run-elf --deterministic` across
 //!   `interpreter`, `tier3`, and `tier4`, comparing exit codes, stdout/stderr, and stop diagnoses (plus
 //!   native Linux ELF execution when running on a Linux AArch64 host).
 
@@ -169,7 +169,7 @@ fn detect_program_kind(path: &Path, header: &[u8]) -> Result<ProgramKind, String
         Some("elf") => Ok(ProgramKind::Elf),
         Some("nro") => Ok(ProgramKind::Nro),
         _ => Err(format!(
-            "unrecognised program format for {} (expected .nro or static AArch64 Linux ELF)",
+            "unrecognised program format for {} (expected .nro or AArch64 Linux ELF)",
             path.display()
         )),
     }
