@@ -3,6 +3,8 @@
 //!
 //! The fixture reads host-clock-derived data after about 4500 instructions, so two runs of even the same engine
 //! differ from step 4527 (`v30`). These tests therefore bound the trace to the first 4000 steps.
+// Without the `nro` feature the NRO tests are compiled out, which leaves some of their helpers unused.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -46,6 +48,7 @@ fn read(path: &Path) -> Value {
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn engines_agree_on_the_bounded_prefix() {
     let d = dir("agree");
@@ -79,6 +82,7 @@ fn engines_agree_on_the_bounded_prefix() {
     assert_eq!(s["truncated"], true);
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn default_engine_matches_the_explicit_interpreter() {
     let d = dir("default");
@@ -90,6 +94,7 @@ fn default_engine_matches_the_explicit_interpreter() {
 
 /// The planted regression: corrupt one register write in an otherwise identical trace. The comparer must name
 /// that exact step, register, and both values.
+#[cfg(feature = "nro")]
 #[test]
 fn planted_register_regression_is_found_at_the_right_step() {
     let d = dir("planted");
@@ -131,6 +136,7 @@ fn planted_register_regression_is_found_at_the_right_step() {
     );
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn a_shorter_bound_is_not_a_divergence() {
     let d = dir("bound");
@@ -152,6 +158,7 @@ fn a_shorter_bound_is_not_a_divergence() {
     );
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn no_env_var_writes_nothing() {
     let d = dir("off");
@@ -180,6 +187,7 @@ fn trace_diff_reports_bad_input_with_exit_2() {
     assert!(String::from_utf8_lossy(&usage.stderr).contains("usage: ounce-core trace-diff"));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn tier4_is_refused_instead_of_recording_a_trace_that_silently_stops_early() {
     let d = dir("tier4");
@@ -193,6 +201,7 @@ fn tier4_is_refused_instead_of_recording_a_trace_that_silently_stops_early() {
     );
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn a_non_ascii_register_name_is_bad_input_not_a_crash() {
     let d = dir("non-ascii");
@@ -212,6 +221,7 @@ fn a_non_ascii_register_name_is_bad_input_not_a_crash() {
     assert!(!String::from_utf8_lossy(&out.stderr).contains("panicked"));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn trace_diff_creates_the_directory_of_its_json_output() {
     let d = dir("json-dir");

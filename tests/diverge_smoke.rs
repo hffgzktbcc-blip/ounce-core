@@ -1,5 +1,7 @@
 //! `ounce-core diverge` end to end: replay a real program's instructions on the host CPU.
 //! Needs an AArch64 host and a C compiler, so it skips elsewhere.
+// Without the `nro` feature the NRO tests are compiled out, which leaves some of their helpers unused.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
 
 use std::process::Command;
 
@@ -73,6 +75,7 @@ fn a_missing_program_is_an_error_not_a_pass() {
 
 /// Host-independent: the Tier-3/Tier-4 trace path records instructions and `diverge` refuses to count a
 /// tier that silently fell back to another engine. Needs no AArch64 host (it never reaches the replay).
+#[cfg(feature = "nro")]
 #[test]
 fn block_engines_record_traces_without_a_replay_host() {
     let nro = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro");
