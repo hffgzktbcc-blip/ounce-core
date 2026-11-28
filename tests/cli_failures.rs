@@ -1,5 +1,8 @@
+// Without the `nro` feature the NRO tests are compiled out, which leaves some of their helpers unused.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
 use std::process::Command;
 
+#[cfg(feature = "nro")]
 #[test]
 fn missing_input_is_a_nonzero_cli_failure() {
     let path = std::env::temp_dir().join(format!("ounce_missing_{}_not_created.nro", std::process::id()));
@@ -11,6 +14,7 @@ fn missing_input_is_a_nonzero_cli_failure() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("Failed to read file"));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn malformed_image_is_a_nonzero_cli_failure() {
     let path = std::env::temp_dir().join(format!("ounce_bad_{}.nro", std::process::id()));
@@ -28,6 +32,7 @@ fn malformed_image_is_a_nonzero_cli_failure() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("[Loader Error]"));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn nro_only_command_rejects_raw_input_before_execution() {
     let path = std::env::temp_dir().join(format!("ounce_raw_{}.nro", std::process::id()));
@@ -68,6 +73,7 @@ fn exit_nro_bytes() -> Vec<u8> {
 /// #476: guest debug output reaches stdout as it is written, not when the run ends, so a hung program's last words
 /// survive an outer timeout. The guest prints a partial line (no newline) and then spins; stdout is a pipe, as it is
 /// under `ounce-hb`. The run is killed as soon as the text arrives, or after 20 seconds.
+#[cfg(feature = "nro")]
 #[test]
 fn guest_output_is_visible_while_a_hung_program_still_runs() {
     use std::io::Read;
@@ -119,6 +125,7 @@ fn guest_output_is_visible_while_a_hung_program_still_runs() {
 /// time have passed, then exits. Each SVC advances the deterministic clock by 20 us, so the wait takes exactly 5000
 /// polls: the header's branch to the code, 2 setup instructions, 3 per poll, 2 to exit. On the host clock the
 /// number of polls follows host speed.
+#[cfg(feature = "nro")]
 #[test]
 fn deterministic_runs_execute_the_same_instructions_while_waiting_on_time() {
     // MOVZ X1, #0x1D, LSL #16; MOVK X1, #0x4C00 (X1 = 1,920,000 ticks = 100 ms at 19.2 MHz)
@@ -211,6 +218,7 @@ fn expected_audio_hash(frames: impl Iterator<Item = i16>) -> String {
 /// and mixes in blocks of 240 frames. Its default mode plays 2400 frames of +/-8000, then one block of silence; "long"
 /// loops at 20% volume for 400 blocks. The report must match those streams exactly, on every run and both tiers. A
 /// program that never opens an audio service reports none.
+#[cfg(feature = "nro")]
 #[test]
 fn headless_audio_is_reported_as_a_frame_count_and_a_deterministic_hash() {
     let audren = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/audren/audren.nro");
@@ -273,6 +281,7 @@ fn faulting_nro_report(tier: &str) -> serde_json::Value {
 /// #475: a stop that has a `pc` also reports the link register and stack pointer, so a failure can be located without
 /// a debugger. `lr` is the instruction after the `BL`, exactly 8 bytes before the faulting `pc`, and `sp` is the
 /// guest's 16-byte-aligned stack. A clean exit has no `pc` on `run-nro`, so it reports neither.
+#[cfg(feature = "nro")]
 #[test]
 fn a_fault_reports_the_link_register_and_stack_pointer() {
     for tier in ["interpreter", "tier3"] {
@@ -303,6 +312,7 @@ fn a_fault_reports_the_link_register_and_stack_pointer() {
 /// A run that stops on a fault reports the instructions that completed before it: the header's branch, the `BL` and
 /// the `MOVZ`, three, on every tier. The faulting load did not complete. A report of 0 would hide how far the program
 /// got, and make the two tiers impossible to compare.
+#[cfg(feature = "nro")]
 #[test]
 fn a_fault_still_counts_the_instructions_that_ran_before_it() {
     let counts: Vec<u64> = ["interpreter", "tier3", "interpreter"]
@@ -330,6 +340,7 @@ fn run_exit_nro_with_argument(tag: &str, arg_len: usize) -> std::process::Output
 // Windows caps a command line at 32,767 characters, so these arguments cannot be passed there; the
 // loader unit tests cover the same limit on every platform.
 #[cfg(not(windows))]
+#[cfg(feature = "nro")]
 #[test]
 fn guest_argument_at_the_documented_limit_runs() {
     // The argument string is "sdmc:/<file> " plus the guest argument; 62,855 bytes is the limit (`MAX_ARGV_LEN`).
@@ -348,6 +359,7 @@ fn guest_argument_at_the_documented_limit_runs() {
 // Windows caps a command line at 32,767 characters, so these arguments cannot be passed there; the
 // loader unit tests cover the same limit on every platform.
 #[cfg(not(windows))]
+#[cfg(feature = "nro")]
 #[test]
 fn guest_argument_one_byte_over_the_limit_is_refused_before_the_program_starts() {
     let file_name_len = format!("ounce_argv_over_{}.nro", std::process::id()).len();
@@ -360,6 +372,7 @@ fn guest_argument_one_byte_over_the_limit_is_refused_before_the_program_starts()
     assert!(!String::from_utf8_lossy(&output.stdout).contains("Starting execution"));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn headless_run_prints_no_host_audio_errors() {
     // Headless opens no audio device, so no ALSA or HostAudioSink lines appear on stderr, whatever the machine has.
@@ -595,6 +608,7 @@ fn instruction_dossier_replay_checks_bytes_and_distinguishes_reproduction_from_c
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn truncated_nso_is_a_loader_error_before_guest_execution() {
     let path = std::env::temp_dir().join(format!("ounce_truncated_{}.nso", std::process::id()));
@@ -640,6 +654,7 @@ fn unknown_command_is_a_usage_error_with_a_suggestion() {
     assert!(stderr.contains("unknown command 'run-nr'") && stderr.contains("Did you mean 'run-nro'?"));
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn commands_without_a_path_are_usage_errors() {
     for command in ["run", "run-nro", "inspect"] {
@@ -653,6 +668,7 @@ fn commands_without_a_path_are_usage_errors() {
     }
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn an_early_stop_ends_with_the_next_step_and_the_report_form() {
     // One undecodable instruction word at 0x80, behind a branch in the header slot.
@@ -687,6 +703,7 @@ fn run_hello(args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn guest_arguments_after_separator_reach_an_nro_unchanged() {
     let exact = run_hello(&["--", "fixture"]);
@@ -709,6 +726,7 @@ fn guest_arguments_after_separator_reach_an_nro_unchanged() {
 /// libnx builds argv by splitting one string on spaces, and drops an empty token even inside quotes. A guest argument
 /// that is the empty string therefore cannot reach the guest: the program would see a smaller `argc` than it was run
 /// with. Refusing it before the program starts is better than that silent change (same rule as #487).
+#[cfg(feature = "nro")]
 #[test]
 fn an_empty_guest_argument_is_refused_instead_of_dropped() {
     let output = run_hello(&["--", "fixture", ""]);
@@ -722,6 +740,7 @@ fn an_empty_guest_argument_is_refused_instead_of_dropped() {
     );
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn unknown_dashed_nro_argument_before_separator_is_refused_with_the_fix() {
     let output = run_hello(&["fixture", "-x"]);
@@ -736,6 +755,7 @@ fn unknown_dashed_nro_argument_before_separator_is_refused_with_the_fix() {
     );
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn run_nro_help_documents_the_separator() {
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
@@ -801,6 +821,7 @@ fn run_elf_writes_an_ounce_run_v1_report_and_dumps_registers() {
 }
 
 /// Only `.nro` programs have an argv; `run` must refuse guest arguments for a folder or another format, not drop them.
+#[cfg(feature = "nro")]
 #[test]
 fn run_refuses_guest_arguments_for_targets_without_an_argv() {
     let dir = std::env::temp_dir().join(format!("ounce_args_dir_{}", std::process::id()));

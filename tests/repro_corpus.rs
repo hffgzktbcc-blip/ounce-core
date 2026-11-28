@@ -3,6 +3,8 @@
 //! Ensures `tests/repro/` contains only JSON manifests (never `.nro` or RomFS binaries), validates
 //! their provenance metadata, and replays each referenced fixture through `ounce-core run-nro`
 //! with `--present=headless --deterministic` to confirm exact deterministic agreement.
+// Without the `nro` feature the NRO tests are compiled out, which leaves some of their helpers unused.
+#![cfg_attr(not(feature = "nro"), allow(dead_code, unused_imports))]
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -63,6 +65,7 @@ fn repro_directory_contains_only_metadata_and_no_binaries() {
     );
 }
 
+#[cfg(feature = "nro")]
 #[test]
 fn repro_manifests_have_valid_metadata_and_replay_deterministically() {
     let paths = manifest_paths();
