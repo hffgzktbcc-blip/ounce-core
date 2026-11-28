@@ -223,7 +223,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   a per-workload provenance entry; none is vendored or downloaded. Verified locally on x86-64 against host builds at
   O1/O2/O3_M1 on Tier-3, Tier-4 and `diverge`; not yet run on the native ARM64 CI job.
 
-## 0.9.0 — released 2026-11-16
+## 0.9.0 — 2026-11-16 (released)
 
 Published as [v0.9.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.9.0), tagged at `d3380a0`. The release-infrastructure
 PRs are merged, and the Linux ARM64 ELF matrix passed on `main` at `9c22a53`
@@ -277,7 +277,7 @@ tag (for example #452 and #456); `git log v0.8.2..v0.9.0` is the full list.
 - This candidate does not publish or merge the synchronized family releases. The
   sibling version bumps and final-candidate CI remain separate publication steps.
 
-## 0.8.2
+## 0.8.2 — 2026-11-14 (released)
 
 The tag commit only bumped the version and the notice-review hashes. The
 changes below landed between v0.8.1 and that tag and were not listed here at
@@ -301,7 +301,7 @@ the time. This section is reconstructed from that git history for review.
 - FEAT_SHA3 SIMD bitwise instructions used by the Apple M1 xxHash build (#428).
 - Guarded wasm3 Linux ELF reservations and faults (#429).
 
-## 0.8.1
+## 0.8.1 — 2026-11-13 (released)
 
 ### Removed
 - The release workflow no longer builds or attaches a prebuilt Mac app (`ounce-core-macos-arm64-app.zip`). The app stays
@@ -320,7 +320,7 @@ the time. This section is reconstructed from that git history for review.
   modes (`auto`, `gpu`, `minifb`) still open the default output device as before. Documented in `docs/DETAILS.md` and
   `--help`.
 
-## 0.8.0
+## 0.8.0 — 2026-11-12 (released)
 
 ### Removed
 - Key handling and encrypted-container support (NCA/XCI, `prod.keys` parsing). Ounce-core is homebrew-only; a CI guard
@@ -352,7 +352,7 @@ the time. This section is reconstructed from that git history for review.
 ### Added
 - FPSR cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are set by FP arithmetic, conversions, FRINT*, compares and FMAX/FMIN in the interpreter and Tier-3, scalar and vector (`src/cpu/softfp.rs`, `Cpu::step`). FP arithmetic now always goes through the soft-float path, so interpreter FP is slower than before (not measured). Tier-4 compiled FP does not set the flags until the program first accesses FPSR; after that FP arithmetic and compares run in the interpreter. The fp-edge gate now compares flags (0 mismatches over 294,156 cases per engine against qemu-user; hardware left to CI). `tools/testfloat/gen_trace.py` emits flags, all four rounding modes, conversions, FRINT* and compares, with a CI job (`testfloat` in `fp-edge.yml`) that has not run yet.
 
-## 0.7.0
+## 0.7.0 — 2026-11-11 (released)
 
 ### Changed
 - `ounce-core diverge` now traces Tier-3 and Tier-4 as well as the interpreter (one-instruction slices), reports a tier
@@ -412,7 +412,7 @@ the time. This section is reconstructed from that git history for review.
   (inf-inf, 0*inf, 0/0, sqrt of a negative) return the positive default NaN on every host (x86 gave the negative one) in
   scalar and vector arithmetic, FNMUL, fused multiply-add and FSQRT; scalar `FRINT*` and `FSQRT` quiet signalling NaNs. Tier-4 scalar `FADD/FSUB/FMUL/FDIV/FNMUL` follow the same NaN rules on non-AArch64 hosts.
 
-## 0.6.1
+## 0.6.1 — 2026-11-09 (released)
 
 ### Fixed
 - ASTC texture decoding: the bilinear weight `w00` underflowed in `u32` when
@@ -424,7 +424,7 @@ the time. This section is reconstructed from that git history for review.
 - CI: `actions/setup-python` 5 → 7 and `actions/dependency-review-action` 4 → 5 (supersedes Dependabot #275 and #274).
 - Default and `nce native-jit` builds are free of compiler warnings.
 
-## 0.6.0
+## 0.6.0 — 2026-11-09 (released)
 Default CLI release for Linux x86-64, macOS arm64 and Windows x86-64. See
 `docs/releases/v0.6.0-publication-proof.json` and the
 [release page](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.6.0).
