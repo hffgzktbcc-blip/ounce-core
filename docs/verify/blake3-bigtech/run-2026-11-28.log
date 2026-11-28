@@ -1,0 +1,16 @@
+# BLAKE3 bigtech rerun, 2026-11-28 22:22 SAST (UTC+0200)
+# host: Apple M3 MacBook, macOS 26.6.2 (25G83), 8 cores
+# ounce-core binary: cargo build --release --locked --features native-jit at f44a7e8 (rustc 1.98.0)
+# command: ZIG=<zig 0.17.1> OUNCE_CORE=<that binary> WORK=<tmp> scripts/verify/blake3.sh
+host: Darwin arm64; ounce-core: v0.12.0; zig: 0.17.1; work: /tmp/oak12-bt/w-b3
+BLAKE3 at 657284b1fa4c4378aa7422b4450dcb5c2c9052fc
+     822 b3.ref
+native oracle: 822 lines, identical to expected.txt
+b3_O2 interpreter rc=0 lines=822/822 time=5s match [run-elf] engine=Interpreter instructions=108992790 syscalls=220
+b3_O2 tier3 rc=0 lines=822/822 time=4s match [run-elf] engine=Tier-3 instructions=108992790 syscalls=220
+b3_O2 tier4 rc=0 lines=822/822 time=2s match [run-elf] engine=Tier-4 instructions=108992790 syscalls=220
+b3_O3 interpreter rc=0 lines=822/822 time=5s match [run-elf] engine=Interpreter instructions=109176574 syscalls=220
+b3_O3 tier3 rc=0 lines=822/822 time=4s match [run-elf] engine=Tier-3 instructions=109176574 syscalls=220
+b3_O3 tier4 rc=0 lines=822/822 time=1s match [run-elf] engine=Tier-4 instructions=109176574 syscalls=220
+RESULT: BLAKE3 657284b1fa4c4378aa7422b4450dcb5c2c9052fc: all 6 runs (2 builds x 3 engines) match the native oracle
+# exit=0 wall=22s
