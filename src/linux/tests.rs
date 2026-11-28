@@ -1589,11 +1589,11 @@ fn getrandom_is_deterministic_validated_and_capped() {
 #[test]
 #[allow(non_snake_case)]
 fn host_root_exposes_a_read_only_folder_and_nothing_outside_it() {
-    use super::syscalls::{Outcome, Process};
+    use super::syscalls::{EINVAL, EISDIR, ENOTDIR, Outcome, Process};
     use crate::mmu::{Memory, Permission};
     const AT_FDCWD: u64 = -100i64 as u64;
     let (OPENAT, READ, LSEEK, PREAD64, NEWFSTATAT, GETDENTS64) = (56u64, 63u64, 62u64, 67u64, 79u64, 61u64);
-    let (O_WRONLY, O_CREAT, O_DIRECTORY) = (1u64, 0o100u64, 0o200000u64);
+    let (O_WRONLY, O_CREAT, O_DIRECTORY) = (1u64, 0o100u64, 0o40000u64);
     let (ENOENT, EROFS) = (2i64, 30i64);
     let base = std::env::temp_dir().join(format!("ounce_root_test_{}", std::process::id()));
     let (root, outside) = (base.join("root"), base.join("outside"));
@@ -1633,6 +1633,27 @@ fn host_root_exposes_a_read_only_folder_and_nothing_outside_it() {
     };
     let fd = open(&mut proc, &mut mem, &mut out, "/etc/motd", 0) as u64;
     assert!(fd >= 3);
+    // arm64 O_DIRECTORY (0o40000) on a file is ENOTDIR (even with O_WRONLY); 0o200000 is arm64's O_DIRECT, which opens it
+    assert_eq!(open(&mut proc, &mut mem, &mut out, "/etc/motd", O_DIRECTORY), -ENOTDIR);
+    assert_eq!(
+        open(&mut proc, &mut mem, &mut out, "/etc/motd", O_WRONLY | O_DIRECTORY),
+        -ENOTDIR
+    );
+    assert_eq!(
+        open(
+            &mut proc,
+            &mut mem,
+            &mut out,
+            "/etc/new",
+            O_WRONLY | O_CREAT | O_DIRECTORY
+        ),
+        -EINVAL
+    );
+    assert_eq!(
+        open(&mut proc, &mut mem, &mut out, "/data", O_WRONLY | O_DIRECTORY),
+        -EISDIR
+    );
+    assert!(open(&mut proc, &mut mem, &mut out, "/etc/motd", 0o200000) >= 3);
     assert_eq!(
         proc.dispatch(READ, [fd, 0x11000, 64, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(20)
@@ -1835,6 +1856,42 @@ fn guest_threads_share_memory_block_on_futexes_and_join() {
         assert_eq!(r.stop, Stop::Exited(0), "{t:?}: {r:?}\n{out}");
         assert_eq!(out, want, "{t:?}");
     }
+}
+
+/// `O_DIRECTORY` (arm64's `0o40000`) on scratch paths, with the results the same requests get from Linux under
+/// `qemu-aarch64` (qemu emulates `/proc/self/auxv` itself and ignores the flag there; Linux returns `ENOTDIR`).
+#[test]
+#[allow(non_snake_case)]
+fn open_with_o_directory_matches_linux() {
+    use super::syscalls::{EINVAL, EISDIR, ENOTDIR, Outcome, Process};
+    use crate::mmu::{Memory, Permission};
+    const AT_FDCWD: u64 = -100i64 as u64;
+    let (O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_DIRECTORY, O_DIRECT) =
+        (1u64, 2u64, 0o100u64, 0o1000u64, 0o40000u64, 0o200000u64);
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x10000, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    let mut open = |p: &str, flags: u64| {
+        mem.write_bytes(0x10000, p.as_bytes()).unwrap();
+        mem.write_bytes(0x10000 + p.len() as u64, &[0]).unwrap();
+        match proc.dispatch(56, [AT_FDCWD, 0x10000, flags, 0o644, 0, 0], &mut mem, &mut out) {
+            Outcome::Return(v) => v,
+            other => panic!("{p}: {other:?}"),
+        }
+    };
+    assert_eq!(open("/dev/null", O_DIRECTORY), -ENOTDIR);
+    assert_eq!(open("/proc/self/auxv", O_DIRECTORY), -ENOTDIR);
+    assert!(open("/tmp/f.bin", O_RDWR | O_CREAT) >= 3);
+    assert_eq!(open("/tmp/f.bin", O_DIRECTORY), -ENOTDIR);
+    assert!(open("/tmp/f.bin", O_DIRECT) >= 3);
+    assert_eq!(open("/tmp/new.bin", O_RDWR | O_CREAT | O_DIRECTORY), -EINVAL);
+    assert!(open("/tmp", O_DIRECTORY) >= 3);
+    assert_eq!(open("/tmp", O_WRONLY | O_DIRECTORY), -EISDIR);
+    assert_eq!(open("/tmp", O_WRONLY), -EISDIR);
+    assert_eq!(open("/tmp", O_TRUNC), -EISDIR);
+    assert_eq!(open("/tmp", O_TRUNC | O_DIRECTORY), -EISDIR);
+    assert!(open("/tmp", 0) >= 3);
 }
 
 /// A futex wait that no thread can ever wake hangs on Linux; the runner stops it with a diagnosis instead.
