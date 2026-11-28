@@ -1266,6 +1266,33 @@ pub fn fcadd(n: u128, m: u128, esize: u32, q: bool, rot90: bool, fpcr: u32) -> u
     out
 }
 
+/// Arm `BFDotAdd` without FEAT_EBF16: `acc + (n0 * m0 + n1 * m1)` for BFloat16 `n`/`m` and a single `acc`, each
+/// product and sum rounded by `BFRound` (round to odd, overflow to infinity, tiny results and denormal inputs
+/// flushed to zero, default NaN). The FPSR exception flags are left as they were.
+pub fn bf_dot_add(acc: u64, n: [u64; 2], m: [u64; 2]) -> u64 {
+    use super::softfp::{self, BinOp, Env, F32, Round};
+    let saved = softfp::take_flags();
+    let env = Env {
+        round: Round::Odd,
+        fz: true,
+        dn: true,
+    };
+    // softfp's round to odd overflows to the largest finite value; BFRound overflows to infinity
+    let bf_round = |r: u64| {
+        if softfp::take_flags() & softfp::OFC != 0 {
+            F32.infinity(r >> 31 == 1)
+        } else {
+            r
+        }
+    };
+    let mul = |a: u64, b: u64| bf_round(softfp::binop(F32, env, BinOp::Mul, a << 16, b << 16));
+    let (p0, p1) = (mul(n[0], m[0]), mul(n[1], m[1]));
+    let sum = bf_round(softfp::binop(F32, env, BinOp::Add, p0, p1));
+    let r = bf_round(softfp::binop(F32, env, BinOp::Add, acc, sum));
+    softfp::raise(saved);
+    r
+}
+
 /// The FPCR environment for `esize`-bit lanes: FZ16 flushes halves, FZ singles and doubles.
 fn fp_env(esize: u32, fpcr: u32) -> super::softfp::Env {
     if esize == 16 {
@@ -2037,7 +2064,7 @@ pub fn by_element(
     q: bool,
     scalar: bool,
 ) -> (u128, bool) {
-    if let SimdElemOp::Dot(signed) = op {
+    if let SimdElemOp::Dot { n_signed, m_signed } = op {
         let mut out = 0u128;
         for i in 0..lanes(32, q) {
             let group = if index == 0xFF {
@@ -2048,11 +2075,8 @@ pub fn by_element(
             let mut acc = lane(d, 32, i) as u32;
             for k in 0..4 {
                 let (a, b) = (lane(n, 8, 4 * i + k), (group >> (8 * k)) & 0xFF);
-                let prod = if signed {
-                    (a as u8 as i8 as i32).wrapping_mul(b as u8 as i8 as i32)
-                } else {
-                    (a as u32).wrapping_mul(b as u32) as i32
-                };
+                let byte = |x: u64, signed: bool| if signed { x as u8 as i8 as i32 } else { x as u8 as i32 };
+                let prod = byte(a, n_signed).wrapping_mul(byte(b, m_signed));
                 acc = acc.wrapping_add(prod as u32);
             }
             set_lane(&mut out, 32, i, acc as u64);
@@ -2072,7 +2096,7 @@ pub fn by_element(
             (r & wide, f)
         }
         SimdElemOp::SatLong(so) => sat_doubling_mul_long(so, d, n, mvec, esize, q),
-        SimdElemOp::Dot(_) => unreachable!(),
+        SimdElemOp::Dot { .. } => unreachable!(),
     }
 }
 

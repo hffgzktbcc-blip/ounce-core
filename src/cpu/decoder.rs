@@ -730,6 +730,14 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
+    // 14a2b. BFCVT Hd, Sn (FEAT_BF16): 0001 1110 0110 0011 0100 00 Rn Rd
+    if (raw & 0xFFFF_FC00) == 0x1E63_4000 {
+        return Instruction::Bfcvt {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+        };
+    }
+
     // 14a2h. FRINT{N,P,M,Z,A,X,I} Hd, Hn (FEAT_FP16): the ftype 3 twin of the block above
     if (raw & 0xFF3C7C00) == 0x1E244000 && ((raw >> 15) & 0x7) != 5 && (raw >> 22) & 0x3 == 3 {
         return Instruction::FpRoundHalf {
@@ -1469,6 +1477,50 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
     }
 
+    // 26a0d. SUDOT (size 00) / USDOT (size 10) by element (FEAT_I8MM): 0 Q 0 01111 size L M Rm 1111 H 0 Rn Rd,
+    //        group index H:L, Rm is M:Rm
+    if (raw & 0xBF40_F400) == 0x0F00_F000 {
+        let usdot = size == 2;
+        return Some(Instruction::SimdByElement {
+            rd,
+            rn,
+            rm: ((raw >> 16) & 0x1F) as u8,
+            index: (((raw >> 10) & 2) | ((raw >> 21) & 1)) as u8,
+            op: SimdElemOp::Dot {
+                n_signed: !usdot,
+                m_signed: usdot,
+            },
+            esize: 32,
+            q,
+            scalar: false,
+        });
+    }
+
+    // 26a0c. BFDOT (FEAT_BF16, by element): 0 Q 0 01111 01 L M Rm 1111 H 0 Rn Rd, pair index H:L, Rm is M:Rm
+    if (raw & 0xBFC0_F400) == 0x0F40_F000 {
+        let index = ((raw >> 10) & 2) | ((raw >> 21) & 1);
+        return Some(Instruction::Bfdot {
+            rd,
+            rn,
+            rm: ((raw >> 16) & 0x1F) as u8,
+            q,
+            index: Some(index as u8),
+        });
+    }
+
+    // 26a0b. BFMLALB/BFMLALT (FEAT_BF16, by element): 0 Q 0 01111 11 L M Rm 1111 H 0 Rn Rd, Q selects T,
+    //        index H:L:M, Rm is V0-V15
+    if (raw & 0xBFC0_F400) == 0x0FC0_F000 {
+        let index = ((raw >> 9) & 4) | ((raw >> 20) & 3);
+        return Some(Instruction::Bfmlal {
+            rd,
+            rn,
+            rm: ((raw >> 16) & 0xF) as u8,
+            top: q,
+            index: Some(index as u8),
+        });
+    }
+
     // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q U 01111 size L M Rm opcode H 0 Rn Rd
     //       (FMLA 0001, FMLS 0101, FMUL 1001, FMULX U=1 1001; size 00 half, 10 single, 11 double) and FEAT_FHM
     //       FMLAL 0000, FMLSL 0100, FMLAL2 U=1 1000, FMLSL2 U=1 1100 (size 10, vector only); other opcodes
@@ -1576,7 +1628,10 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                     rn,
                     rm,
                     index: ((h << 1) | l) as u8,
-                    op: SimdElemOp::Dot(!u),
+                    op: SimdElemOp::Dot {
+                        n_signed: !u,
+                        m_signed: !u,
+                    },
                     esize: 32,
                     q,
                     scalar: false,
@@ -1625,6 +1680,33 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             esize: 8u8 << size,
             q: false,
             scalar: true,
+        });
+    }
+
+    // 26a4f. BFMMLA (FEAT_BF16): 0110 1110 010 Rm 111011 Rn Rd
+    if (raw & 0xFFE0_FC00) == 0x6E40_EC00 {
+        return Some(Instruction::Bfmmla { rd, rn, rm });
+    }
+
+    // 26a4e. BFDOT (FEAT_BF16, vector): 0 Q 1 01110 01 0 Rm 1111 1 1 Rn Rd
+    if (raw & 0xBFE0_FC00) == 0x2E40_FC00 {
+        return Some(Instruction::Bfdot {
+            rd,
+            rn,
+            rm,
+            q,
+            index: None,
+        });
+    }
+
+    // 26a4d. BFMLALB/BFMLALT (FEAT_BF16, vector): 0 Q 1 01110 11 0 Rm 11111 1 Rn Rd, Q selects T
+    if (raw & 0xBFE0_FC00) == 0x2EC0_FC00 {
+        return Some(Instruction::Bfmlal {
+            rd,
+            rn,
+            rm,
+            top: q,
+            index: None,
         });
     }
 
@@ -1691,6 +1773,40 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
     }
 
+    // 26a4m. SMMLA (U0 B0), UMMLA (U1 B0), USMMLA (U0 B1) (FEAT_I8MM): 0 1 U 01110 10 0 Rm 1010 B 1 Rn Rd
+    if (raw & 0xDFE0_F400) == 0x4E80_A400 {
+        let (n_signed, m_signed) = match (u, (raw >> 11) & 1) {
+            (false, 0) => (true, true),
+            (true, 0) => (false, false),
+            (false, _) => (false, true),
+            _ => return None,
+        };
+        return Some(Instruction::SimdMmla {
+            rd,
+            rn,
+            rm,
+            n_signed,
+            m_signed,
+        });
+    }
+
+    // 26a4u. USDOT (FEAT_I8MM, vector): 0 Q 0 01110 10 0 Rm 10011 1 Rn Rd (unsigned Vn, signed Vm bytes)
+    if (raw & 0xBFE0_FC00) == 0x0E80_9C00 {
+        return Some(Instruction::SimdByElement {
+            rd,
+            rn,
+            rm,
+            index: 0xFF,
+            op: SimdElemOp::Dot {
+                n_signed: false,
+                m_signed: true,
+            },
+            esize: 32,
+            q,
+            scalar: false,
+        });
+    }
+
     // 26a4. AdvSIMD vector SDOT/UDOT: 0 Q U 01110 10 0 Rm 10010 1 Rn Rd
     if (raw & 0x9FE0_FC00) == 0x0E80_9400 {
         return Some(Instruction::SimdByElement {
@@ -1698,7 +1814,10 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             rn,
             rm,
             index: 0xFF,
-            op: SimdElemOp::Dot(!u),
+            op: SimdElemOp::Dot {
+                n_signed: !u,
+                m_signed: !u,
+            },
             esize: 32,
             q,
             scalar: false,
@@ -2376,6 +2495,11 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             op,
             esize: 32u8 << (size & 1),
         });
+    }
+
+    // 29b1. BFCVTN/BFCVTN2 (FEAT_BF16): 0 Q 0 01110 10 10000 10110 10 Rn Rd
+    if (raw & 0xBFFF_FC00) == 0x0EA1_6800 {
+        return Some(Instruction::Bfcvtn { rd, rn, q });
     }
 
     // 29b0. AdvSIMD two-register miscellaneous, half precision (FEAT_FP16): 0 Q U 01110 a 1111 00 opcode 10 Rn Rd.

@@ -109,6 +109,8 @@ pub struct Fmt {
 pub const F16: Fmt = Fmt { ebits: 5, mbits: 10 };
 pub const F32: Fmt = Fmt { ebits: 8, mbits: 23 };
 pub const F64: Fmt = Fmt { ebits: 11, mbits: 52 };
+/// BFloat16 (FEAT_BF16): the top 16 bits of a single.
+pub const BF16: Fmt = Fmt { ebits: 8, mbits: 7 };
 
 impl Fmt {
     pub fn from_esize(esize: u32) -> Fmt {

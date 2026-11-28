@@ -1666,6 +1666,110 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Bfcvt { rd, rn } => {
+                let env = softfp::Env::from_fpcr(self.regs.fpcr);
+                let r = softfp::convert(
+                    softfp::F32,
+                    softfp::BF16,
+                    env,
+                    self.regs.read_q(rn) as u64 & 0xFFFF_FFFF,
+                );
+                self.regs.write_q(rd, r as u128);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Bfcvtn { rd, rn, q } => {
+                let env = softfp::Env::from_fpcr(self.regs.fpcr);
+                let n = self.regs.read_q(rn);
+                let mut half = 0u128;
+                for i in 0..4 {
+                    let b = softfp::convert(softfp::F32, softfp::BF16, env, simd::lane(n, 32, i));
+                    half |= (b as u128) << (16 * i);
+                }
+                let r = if q {
+                    (self.regs.read_q(rd) & u64::MAX as u128) | half << 64
+                } else {
+                    half
+                };
+                self.regs.write_q(rd, r);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Bfmlal { rd, rn, rm, top, index } => {
+                let env = softfp::Env::from_fpcr(self.regs.fpcr);
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let mut out = 0u128;
+                for e in 0..4 {
+                    let sel = 2 * e + top as usize;
+                    let a = simd::lane(n, 16, sel) << 16;
+                    let b = simd::lane(m, 16, index.map_or(sel, usize::from)) << 16;
+                    let r = softfp::fma(softfp::F32, env, a, b, simd::lane(d, 32, e));
+                    out |= (r as u128) << (32 * e);
+                }
+                self.regs.write_q(rd, out);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Bfdot { rd, rn, rm, q, index } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let mut out = 0u128;
+                for e in 0..if q { 4 } else { 2 } {
+                    let p = index.map_or(e, usize::from);
+                    let ns = [simd::lane(n, 16, 2 * e), simd::lane(n, 16, 2 * e + 1)];
+                    let ms = [simd::lane(m, 16, 2 * p), simd::lane(m, 16, 2 * p + 1)];
+                    out |= (simd::bf_dot_add(simd::lane(d, 32, e), ns, ms) as u128) << (32 * e);
+                }
+                self.regs.write_q(rd, out);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Bfmmla { rd, rn, rm } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let mut out = 0u128;
+                for (i, j) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
+                    let mut sum = simd::lane(d, 32, 2 * i + j);
+                    for k in 0..2 {
+                        let ns = [simd::lane(n, 16, 4 * i + 2 * k), simd::lane(n, 16, 4 * i + 2 * k + 1)];
+                        let ms = [simd::lane(m, 16, 4 * j + 2 * k), simd::lane(m, 16, 4 * j + 2 * k + 1)];
+                        sum = simd::bf_dot_add(sum, ns, ms);
+                    }
+                    out |= (sum as u128) << (32 * (2 * i + j));
+                }
+                self.regs.write_q(rd, out);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdMmla {
+                rd,
+                rn,
+                rm,
+                n_signed,
+                m_signed,
+            } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let byte = |v: u128, i: usize, signed: bool| {
+                    let x = simd::lane(v, 8, i);
+                    if signed { x as u8 as i8 as i32 } else { x as i32 }
+                };
+                let mut out = 0u128;
+                for (i, j) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
+                    let mut acc = simd::lane(d, 32, 2 * i + j) as u32;
+                    for k in 0..8 {
+                        let prod = byte(n, 8 * i + k, n_signed).wrapping_mul(byte(m, 8 * j + k, m_signed));
+                        acc = acc.wrapping_add(prod as u32);
+                    }
+                    out |= (acc as u128) << (32 * (2 * i + j));
+                }
+                self.regs.write_q(rd, out);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::FpRoundHalf { rd, rn, op } => {
                 // op: 0 N, 1 P, 2 M, 3 Z, 4 A, 6 X, 7 I; FRINTX/FRINTI round with FPCR.RMode, FRINTX raises IXC
                 let fpcr = self.regs.fpcr;
@@ -4148,6 +4252,361 @@ mod tests {
             super::super::registers::FPSR_QC | 0x10,
             "QC from the saturations, IXC from FCVT*"
         );
+    }
+
+    #[test]
+    fn bf16_bfcvt_rounds_a_single_to_bfloat16() {
+        // #469 FEAT_BF16: bfcvt h0, s1 (llvm-mc 18). BFloat16 is the top half of a single: round to nearest even under
+        // the default FPCR, IXC when bits are lost, and the rest of Vd zeroed.
+        for (single, want, fpsr) in [
+            (0x3F80_0000u32, 0x3F80u128, 0u32), // 1.0 is exact
+            (0x3F80_8000, 0x3F80, 0x10),        // a tie rounds to the even 0x3F80
+            (0x3F81_8000, 0x3F82, 0x10),        // a tie rounds to the even 0x3F82
+            (0x3F80_8001, 0x3F81, 0x10),        // just above the tie rounds up
+            (0xC2F7_0000, 0xC2F7, 0),           // -123.5 is exact
+        ] {
+            let (cpu, _) = run(&[0x1E63_4020], |c, _| {
+                c.regs.write_q(0, u128::MAX);
+                c.regs.write_q(1, single as u128 | (u128::MAX << 32));
+            });
+            assert_eq!((cpu.regs.read_q(0), cpu.regs.fpsr), (want, fpsr), "{single:#010x}");
+        }
+        // Non-default FPCR: SNaN quieting (+IOC), DN forcing default NaN, RMode=RP, and FZ flushing denormal input (+IDC)
+        let (cpu, _) = run(&[0x1E63_4020], |c, _| {
+            c.regs.write_q(1, 0x7F80_0001u128);
+        });
+        assert_eq!(
+            (cpu.regs.read_q(0), cpu.regs.fpsr),
+            (0x7FC0, 0x01),
+            "sNaN quieted + IOC"
+        );
+        let (cpu, _) = run(&[0x1E63_4020], |c, _| {
+            c.regs.fpcr = 1 << 25; // DN
+            c.regs.write_q(1, 0xFFC1_0000u128);
+        });
+        assert_eq!((cpu.regs.read_q(0), cpu.regs.fpsr), (0x7FC0, 0), "DN -> default NaN");
+        let (cpu, _) = run(&[0x1E63_4020], |c, _| {
+            c.regs.fpcr = 1 << 22; // RMode = RP (+inf)
+            c.regs.write_q(1, 0x3F80_0001u128);
+        });
+        assert_eq!(
+            (cpu.regs.read_q(0), cpu.regs.fpsr),
+            (0x3F81, 0x10),
+            "RP rounds up + IXC"
+        );
+        let (cpu, _) = run(&[0x1E63_4020], |c, _| {
+            c.regs.fpcr = 1 << 24; // FZ
+            c.regs.write_q(1, 0x0040_0000u128); // f32 subnormal
+        });
+        assert_eq!(
+            (cpu.regs.read_q(0), cpu.regs.fpsr),
+            (0x0000, 0x80),
+            "FZ flushes denormal + IDC"
+        );
+    }
+
+    #[test]
+    fn bf16_bfcvtn_narrows_four_singles_into_either_half() {
+        // bfcvtn v2.4h, v3.4s (lower half, upper zeroed) and bfcvtn2 v4.8h, v3.4s (upper half, lower kept)
+        let s = |lanes: &[u32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (32 * i))
+        };
+        let h = |lanes: &[u16]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (16 * i))
+        };
+        let (cpu, _) = run(&[0x0EA1_6862, 0x4EA1_6864], |c, _| {
+            // 1.0, a tie (to even 0x3F80), -2.0, pi (0x40490FDB, rounds down to 0x4049)
+            c.regs
+                .write_q(3, s(&[0x3F80_0000, 0x3F80_8000, 0xC000_0000, 0x4049_0FDB]));
+            c.regs.write_q(2, u128::MAX);
+            c.regs.write_q(4, 0x1111_2222_3333_4444 | (u128::MAX << 64));
+        });
+        let narrow = h(&[0x3F80, 0x3F80, 0xC000, 0x4049]);
+        assert_eq!(cpu.regs.read_q(2), narrow);
+        assert_eq!(cpu.regs.read_q(4), 0x1111_2222_3333_4444 | narrow << 64);
+        assert_eq!(cpu.regs.fpsr, 0x10, "the tie and pi are inexact");
+    }
+
+    #[test]
+    fn bf16_bfmlalb_bfmlalt_widen_even_or_odd_lanes_and_fuse() {
+        // d.s[e] += n.h[2e (+1 for T)] * m.h[same, or the indexed element], BFloat16 widened to single
+        let s = |lanes: &[f32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, x)| v | (x.to_bits() as u128) << (32 * i))
+        };
+        let h = |lanes: &[u16]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (16 * i))
+        };
+        let words = [
+            0x2EC7_FCC5, // bfmlalb v5.4s, v6.8h, v7.8h
+            0x6EC7_FCC8, // bfmlalt v8.4s, v6.8h, v7.8h
+            0x0FD7_F8C9, // bfmlalb v9.4s, v6.8h, v7.h[5]
+            0x4FFF_F8CA, // bfmlalt v10.4s, v6.8h, v15.h[7]
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs.write_q(5, s(&[1.0, 2.0, 3.0, 4.0]));
+            // v6 = 1, 2, 3, -1, 0.5, 4, 2, 8 and v7 = 2, 3, 4, 5, 6, 7, 0.25, 1 (BFloat16)
+            c.regs
+                .write_q(6, h(&[0x3F80, 0x4000, 0x4040, 0xBF80, 0x3F00, 0x4080, 0x4000, 0x4100]));
+            c.regs
+                .write_q(7, h(&[0x4000, 0x4040, 0x4080, 0x40A0, 0x40C0, 0x40E0, 0x3E80, 0x3F80]));
+            c.regs.write_q(15, h(&[0, 0, 0, 0, 0, 0, 0, 0x3F00]));
+        });
+        assert_eq!(cpu.regs.read_q(5), s(&[3.0, 14.0, 6.0, 4.5]), "even lanes");
+        assert_eq!(cpu.regs.read_q(8), s(&[6.0, -5.0, 28.0, 8.0]), "odd lanes");
+        assert_eq!(
+            cpu.regs.read_q(9),
+            s(&[7.0, 21.0, 3.5, 14.0]),
+            "even lanes times v7.h[5] = 7"
+        );
+        assert_eq!(
+            cpu.regs.read_q(10),
+            s(&[1.0, -0.5, 2.0, 4.0]),
+            "odd lanes times v15.h[7] = 0.5"
+        );
+        assert_eq!(cpu.regs.fpsr, 0);
+    }
+
+    #[test]
+    fn bf16_bfdot_sums_pairs_with_bfround() {
+        // d.s[e] += n.h[2e] * m.h[2e] + n.h[2e+1] * m.h[2e+1] (Arm BFDotAdd without FEAT_EBF16)
+        let s = |lanes: &[f32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, x)| v | (x.to_bits() as u128) << (32 * i))
+        };
+        let w = |lanes: &[u32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (32 * i))
+        };
+        let h = |lanes: &[u16]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (16 * i))
+        };
+        let words = [
+            0x6E47_FCCB, // bfdot v11.4s, v6.8h, v7.8h
+            0x0F67_F8CC, // bfdot v12.2s, v6.4h, v7.2h[3]
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs.write_q(11, s(&[1.0; 4]));
+            c.regs.write_q(12, u128::MAX << 64); // zero accumulators, garbage above the 2S result
+            // v6 = 1, 2, 3, -1, 0.5, 4, 2, 8 and v7 = 2, 3, 4, 5, 6, 7, 0.25, 1 (BFloat16)
+            c.regs
+                .write_q(6, h(&[0x3F80, 0x4000, 0x4040, 0xBF80, 0x3F00, 0x4080, 0x4000, 0x4100]));
+            c.regs
+                .write_q(7, h(&[0x4000, 0x4040, 0x4080, 0x40A0, 0x40C0, 0x40E0, 0x3E80, 0x3F80]));
+        });
+        assert_eq!(
+            cpu.regs.read_q(11),
+            s(&[9.0, 8.0, 32.0, 9.5]),
+            "1 + (2 + 6), 1 + (12 - 5), 1 + (3 + 28), 1 + (0.5 + 8)"
+        );
+        assert_eq!(
+            cpu.regs.read_q(12),
+            s(&[2.25, -0.25]),
+            "pair 3 of v7 = (0.25, 1); 2S zeroes the top"
+        );
+        assert_eq!(cpu.regs.fpsr, 0);
+
+        // BFRound: round to odd, overflow to infinity, denormal inputs flushed, default NaN, and never any FPSR flag
+        let (cpu, _) = run(&[0x6E47_FCCB], |c, _| {
+            c.regs.write_q(11, w(&[0, 0x7F7F_FFFF, 0, 0x3F80_0000]));
+            // e0: 2^24 * 1 + 1 * 1 = 2^24 + 1, odd: 0x4B800001; e1: max + 2^127 overflows; e2: a denormal times 2^127
+            // e3: a signalling NaN
+            c.regs.write_q(6, h(&[0x4B80, 0x3F80, 0x7F00, 0, 0x0001, 0, 0x7F81, 0]));
+            c.regs.write_q(7, h(&[0x3F80, 0x3F80, 0x3F80, 0, 0x7F00, 0, 0x3F80, 0]));
+        });
+        assert_eq!(cpu.regs.read_q(11), w(&[0x4B80_0001, 0x7F80_0000, 0, 0x7FC0_0000]));
+        assert_eq!(cpu.regs.fpsr, 0, "BFDOT does not update the FPSR exception flags");
+    }
+
+    #[test]
+    fn bf16_bfmmla_multiplies_two_by_four_matrices() {
+        // bfmmla v13.4s, v6.8h, v7.8h: d[i][j] += sum over k of n[i][k] * m[j][k], two BFDotAdd steps per element
+        let s = |lanes: &[f32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, x)| v | (x.to_bits() as u128) << (32 * i))
+        };
+        let h = |lanes: &[u16]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (16 * i))
+        };
+        let (cpu, _) = run(&[0x6E47_ECCD], |c, _| {
+            c.regs.write_q(13, s(&[1.0; 4]));
+            // n rows (1, 2, 3, 4) and (0.5, -1, 2, 8); m rows (2, 3, 4, 5) and (1, 1, 0.25, 1)
+            c.regs
+                .write_q(6, h(&[0x3F80, 0x4000, 0x4040, 0x4080, 0x3F00, 0xBF80, 0x4000, 0x4100]));
+            c.regs
+                .write_q(7, h(&[0x4000, 0x4040, 0x4080, 0x40A0, 0x3F80, 0x3F80, 0x3E80, 0x3F80]));
+        });
+        assert_eq!(
+            cpu.regs.read_q(13),
+            s(&[41.0, 8.75, 47.0, 9.0]),
+            "1 + 40, 1 + 7.75, 1 + 46, 1 + 8"
+        );
+        assert_eq!(cpu.regs.fpsr, 0);
+
+        // Two non-associative/overflow vectors verified on Apple M3 (FEAT_BF16=1, FEAT_EBF16=0):
+        // BFMMLA chains two BFDotAdd steps ((acc + s0) + s1) rather than acc + (s0 + s1).
+        let w = |lanes: &[u32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (32 * i))
+        };
+        let (cpu, _) = run(&[0x6E47_ECCD], |c, _| {
+            // lane 0: acc=2^24, s0=+1, s1=-1 -> 0x4B80_0001
+            c.regs.write_q(13, w(&[0x4B80_0000, 0, 0, 0]));
+            c.regs.write_q(6, h(&[0x3F80, 0, 0xBF80, 0, 0, 0, 0, 0]));
+            c.regs.write_q(7, h(&[0x3F80, 0, 0x3F80, 0, 0, 0, 0, 0]));
+        });
+        assert_eq!(
+            cpu.regs.read_q(13) as u32,
+            0x4B80_0001,
+            "M3 V1 rounding: ((2^24 + 1) - 1)"
+        );
+        let (cpu, _) = run(&[0x6E47_ECCD], |c, _| {
+            c.regs.write_q(13, w(&[0xFF00_0000, 0, 0, 0]));
+            c.regs.write_q(6, h(&[0x5F80, 0, 0x5F80, 0, 0, 0, 0, 0]));
+            c.regs.write_q(7, h(&[0x5F00, 0, 0x5F00, 0, 0, 0, 0, 0]));
+        });
+        assert_eq!(
+            cpu.regs.read_q(13) as u32,
+            0x7F00_0000,
+            "M3 V2 overflow: ((-2^127 + 2^127) + 2^127)"
+        );
+        assert_eq!(cpu.regs.fpsr, 0);
+    }
+
+    #[test]
+    fn i8mm_usdot_and_sudot_mix_unsigned_and_signed_bytes() {
+        // #469 FEAT_I8MM: USDOT (unsigned Vn bytes, signed Vm bytes) vector and by element, SUDOT (the reverse) by element
+        let b = |bytes: &[u8]| {
+            bytes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (8 * i))
+        };
+        let w = |lanes: &[i32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u32 as u128) << (32 * i))
+        };
+        let words = [
+            0x4E87_9CCE, // usdot v14.4s, v6.16b, v7.16b
+            0x0FA7_F8D0, // usdot v16.2s, v6.8b, v7.4b[3]
+            0x4F27_F0D1, // sudot v17.4s, v6.16b, v7.4b[1]
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs
+                .write_q(6, b(&[255, 1, 2, 3, 128, 0, 0, 0, 10, 20, 30, 40, 1, 1, 1, 1]));
+            c.regs.write_q(
+                7,
+                b(&[0xFF, 2, 3, 4, 0x80, 0, 0, 0, 1, 0xFF, 1, 0xFF, 127, 127, 127, 127]),
+            );
+            c.regs.write_q(14, w(&[0, 5, -3, 100]));
+            c.regs.write_q(16, u128::MAX << 64);
+        });
+        // 255 * -1 + 2 + 6 + 12; 5 + 128 * -128; -3 + 10 - 20 + 30 - 40; 100 + 4 * 127
+        assert_eq!(cpu.regs.read_q(14), w(&[-235, -16379, -23, 608]));
+        assert_eq!(
+            cpu.regs.read_q(16),
+            w(&[261 * 127, 128 * 127]),
+            "group 3 of v7 is 127 x 4; 2S zeroes the top"
+        );
+        // signed n times the unsigned group 1 of v7 = (128, 0, 0, 0): 255 is -1 and 128 is -128
+        assert_eq!(cpu.regs.read_q(17), w(&[-128, -16384, 1280, 128]));
+
+        // Verify 5-bit M:Rm indexing (Vm >= 16, M=1) for USDOT, SUDOT, and BFDOT by element:
+        // usdot v2.2s, v6.8b, v20.4b[2] (0x0F94_F8C2), sudot v3.4s, v6.16b, v20.4b[2] (0x4F14_F8C3)
+        let (cpu, _) = run(&[0x0F94_F8C2, 0x4F14_F8C3], |c, _| {
+            c.regs
+                .write_q(6, b(&[1, 1, 1, 1, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+            c.regs
+                .write_q(20, b(&[0, 0, 0, 0, 0, 0, 0, 0, 0xFE, 1, 1, 1, 0, 0, 0, 0])); // group 2 = [0xFE (-2 or 254), 1, 1, 1]
+            c.regs.write_q(2, 0);
+            c.regs.write_q(3, 0);
+        });
+        assert_eq!(
+            cpu.regs.read_q(2),
+            w(&[1, -510]),
+            "USDOT v20.4b[2]: 1*(-2+1+1+1)=1, 255*(-2)=-510"
+        );
+        assert_eq!(
+            cpu.regs.read_q(3),
+            w(&[257, -254, 0, 0]),
+            "SUDOT v20.4b[2]: 1*(254+1+1+1)=257, (-1)*254=-254"
+        );
+        // bfdot v1.2s, v6.4h, v23.2h[2] (0x0F57_F8C1): (1,2).(1,2)=5.0, (3,4).(1,2)=11.0
+        let (cpu, _) = run(&[0x0F57_F8C1], |c, _| {
+            c.regs.write_q(
+                6,
+                0x3F80u128 | (0x4000u128 << 16) | (0x4040u128 << 32) | (0x4080u128 << 48),
+            );
+            c.regs.write_q(23, (0x3F80u128 << 64) | (0x4000u128 << 80)); // pair 2 = (1.0, 2.0)
+            c.regs.write_q(1, u128::MAX << 64);
+        });
+        assert_eq!(
+            cpu.regs.read_q(1),
+            (5.0f32.to_bits() as u128) | ((11.0f32.to_bits() as u128) << 32),
+            "BFDOT v23.2h[2] exact result with M=1 and upper 64 bits zeroed"
+        );
+    }
+
+    #[test]
+    fn i8mm_smmla_ummla_usmmla_multiply_two_by_eight_byte_matrices() {
+        // d[i][j] += sum over k < 8 of n[8i + k] * m[8j + k]: signed x signed, unsigned x unsigned, unsigned x signed
+        let b = |bytes: &[u8]| {
+            bytes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u128) << (8 * i))
+        };
+        let w = |lanes: &[i32]| {
+            lanes
+                .iter()
+                .enumerate()
+                .fold(0u128, |v, (i, &x)| v | (x as u32 as u128) << (32 * i))
+        };
+        let words = [
+            0x4E87_A4D2, // smmla v18.4s, v6.16b, v7.16b
+            0x6E87_A4D3, // ummla v19.4s, v6.16b, v7.16b
+            0x4E87_ACD4, // usmmla v20.4s, v6.16b, v7.16b
+        ];
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs
+                .write_q(6, b(&[255, 1, 2, 3, 128, 0, 0, 0, 10, 20, 30, 40, 1, 1, 1, 1]));
+            c.regs.write_q(
+                7,
+                b(&[0xFF, 2, 3, 4, 0x80, 0, 0, 0, 1, 0xFF, 1, 0xFF, 127, 127, 127, 127]),
+            );
+            c.regs.write_q(18, w(&[0, 1, 2, 3]));
+        });
+        // smmla [0][0]: (-1)(-1) + 2 + 6 + 12 + (-128)(-128) = 16405
+        assert_eq!(cpu.regs.read_q(18), w(&[16405, -16258, 154, 491]));
+        assert_eq!(cpu.regs.read_q(19), w(&[81429, 17533, 2968, 15848]));
+        assert_eq!(cpu.regs.read_q(20), w(&[-16619, 16509, 152, 488]));
     }
 
     #[test]

@@ -1116,6 +1116,11 @@ fn hardware_fast_path_instructions_execute_across_all_tiers() {
         0x2257fb,
         "AT_HWCAP must expose verified bits: FP | ASIMD | AES | PMULL | SHA1 | SHA2 | CRC32 | ATOMICS | FPHP | ASIMDHP | ASIMDRDM | FCMA | SHA3 | SHA512"
     );
+    assert_eq!(
+        crate::linux::elf::HWCAP2_VALUE,
+        (1 << 13) | (1 << 14),
+        "AT_HWCAP2 must expose I8MM and BF16 (Linux uapi hwcap.h bits 13 and 14)"
+    );
 
     // Assembly sequence testing PMULL, CRC32, and SHA3:
     // pmull v0.8h, v1.8b, v2.8b    (0x0E22E020)
@@ -1134,8 +1139,10 @@ fn hardware_fast_path_instructions_execute_across_all_tiers() {
     // bcax v0.16b, v1.16b, v2.16b, v3.16b (0xCE220020)
     // rax1 v0.2d, v1.2d, v2.2d      (0xCE628C20)
     // xar v0.2d, v1.2d, v2.2d, #1   (0xCE820420)
+    // bfcvt h0, s1                  (0x1E634020)
+    // usdot v0.4s, v1.16b, v2.16b   (0x4E829C20)
     // mov x8, #93 (exit); mov x0, #0; svc #0 (0xD2800BA8, 0xD2800000, 0xD4000001)
-    let code: [u32; 19] = [
+    let code: [u32; 21] = [
         0x0E22_E020,
         0x4E22_E020,
         0x0EE2_E020,
@@ -1152,6 +1159,8 @@ fn hardware_fast_path_instructions_execute_across_all_tiers() {
         0xCE22_0020,
         0xCE62_8C20,
         0xCE82_0420,
+        0x1E63_4020,
+        0x4E82_9C20,
         0xD280_0BA8,
         0xD280_0000,
         0xD400_0001,

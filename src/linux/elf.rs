@@ -39,6 +39,7 @@ const AT_HWCAP: u64 = 16;
 const AT_CLKTCK: u64 = 17;
 const AT_SECURE: u64 = 23;
 const AT_RANDOM: u64 = 25;
+const AT_HWCAP2: u64 = 26;
 const AT_EXECFN: u64 = 31;
 
 pub const HWCAP_FP: u64 = 1 << 0;
@@ -69,6 +70,12 @@ pub const HWCAP_VALUE: u64 = HWCAP_FP
     | HWCAP_FCMA
     | HWCAP_SHA3
     | HWCAP_SHA512;
+
+/// `AT_HWCAP2`: FEAT_I8MM (`USDOT`, `SUDOT`, `SMMLA`, `UMMLA`, `USMMLA`) and FEAT_BF16 (`BFCVT`, `BFCVTN{2}`,
+/// `BFDOT`, `BFMLALB/T`, `BFMMLA`), every AdvSIMD form of both.
+pub const HWCAP2_I8MM: u64 = 1 << 13;
+pub const HWCAP2_BF16: u64 = 1 << 14;
+pub const HWCAP2_VALUE: u64 = HWCAP2_I8MM | HWCAP2_BF16;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ElfError {
@@ -520,6 +527,7 @@ pub fn build_stack_with_auxv(
         (AT_GID, 1000),
         (AT_EGID, 1000),
         (AT_HWCAP, HWCAP_VALUE),
+        (AT_HWCAP2, HWCAP2_VALUE),
         (AT_CLKTCK, 100),
         (AT_SECURE, 0),
         (AT_RANDOM, random_p),
