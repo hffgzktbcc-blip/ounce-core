@@ -929,7 +929,7 @@ fn help_and_info_describe_the_actual_execution_model() {
     assert!(info.status.success());
     let info = String::from_utf8_lossy(&info.stdout);
     let arch_pos = info
-        .find("Single-threaded AArch64 execution for bounded program testing")
+        .find("Bounded program testing; guest threads run one at a time")
         .unwrap_or_else(|| panic!("missing arch line:\n{info}"));
     let engines_pos = info
         .find("Execution Engines")

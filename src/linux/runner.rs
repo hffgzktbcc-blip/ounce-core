@@ -517,7 +517,7 @@ impl Output for HostOutput {
     }
 }
 
-const RUN_ELF_USAGE: &str = "usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [--root=<dir>] [-- args...]";
+const RUN_ELF_USAGE: &str = "usage: ounce-core run-elf <aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [--root=<dir>] [-- args...]";
 
 /// CLI entry: `args` are everything after `run-elf`. Returns the process exit status.
 pub fn cli(args: &[String]) -> i32 {

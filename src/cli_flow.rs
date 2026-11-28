@@ -45,7 +45,7 @@ pub fn getting_started(version: &str) -> String {
          Start here:\n  \
          ounce-core ui                     Check a program in the browser workbench (drop a .nro, compare engines)\n  \
          ounce-core run-nro <file.nro>     Run a Switch homebrew program and print where it stopped\n  \
-         ounce-core run-elf <file>         Run a static AArch64 Linux program\n\n\
+         ounce-core run-elf <file>         Run an AArch64 Linux program\n\n\
          If a run stops early, the output ends with the next step and how to report it.\n\
          All commands: ounce-core help\n"
     )

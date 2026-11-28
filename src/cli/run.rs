@@ -385,7 +385,7 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
         Err(e) => {
             if nro_only && bytes.starts_with(b"\x7fELF") {
                 eprintln!(
-                    "[Loader Error] '{}' is an ELF binary, not a Switch homebrew .nro ({}). Static AArch64 Linux ELFs run with: ounce-core run-elf {}",
+                    "[Loader Error] '{}' is an ELF binary, not a Switch homebrew .nro ({}). AArch64 Linux ELFs run with: ounce-core run-elf {}",
                     path, e, path
                 );
             } else if nro_only && matches!(e, loader::LoadError::TooSmall) {

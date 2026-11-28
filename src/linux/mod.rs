@@ -1,4 +1,4 @@
-//! Linux user-mode runner (vision step 1): static AArch64 Linux ELF executables on the CPU engines.
+//! Linux user-mode runner (vision step 1): AArch64 Linux ELF executables (static, PIE, and dynamically linked musl programs under `--root`) on the CPU engines.
 //!
 //! `ounce-core run-elf <elf> [-- args]`. Programs that need anything outside the small, listed syscall
 //! surface stop with a one-line diagnosis naming the syscall number or instruction word. See
