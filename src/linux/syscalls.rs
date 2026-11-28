@@ -84,7 +84,8 @@ const O_CREAT: u32 = 0o100;
 const O_EXCL: u32 = 0o200;
 const O_TRUNC: u32 = 0o1000;
 const O_APPEND: u32 = 0o2000;
-const O_DIRECTORY: u32 = 0o200000;
+/// arm64's value (x86's is `0o200000`, which on arm64 is `O_DIRECT`)
+const O_DIRECTORY: u32 = 0o40000;
 const O_CLOEXEC: u32 = 0o2000000;
 
 pub const MAX_OPEN_FDS: usize = 64;
@@ -757,6 +758,10 @@ impl Process {
 
     fn sys_openat(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
         let (_dirfd, path_ptr, flags, mode) = (a[0] as i64, a[1], a[2] as u32, a[3] as u32);
+        // Linux 6.4 and later refuse the pair before looking at the path
+        if flags & O_CREAT != 0 && flags & O_DIRECTORY != 0 {
+            return -EINVAL;
+        }
         let path_str = match read_path(path_ptr, mmu) {
             Ok(p) => p,
             Err(_) => return -ENOENT,
@@ -772,7 +777,11 @@ impl Process {
                 -ENOENT
             };
         }
+        let wants_dir = flags & O_DIRECTORY != 0;
         if norm == "/dev/null" {
+            if wants_dir {
+                return -ENOTDIR;
+            }
             let cloexec = flags & O_CLOEXEC != 0;
             return match self.alloc_fd(
                 OpenFile {
@@ -788,6 +797,9 @@ impl Process {
             };
         }
         if norm == "/proc/self/auxv" {
+            if wants_dir {
+                return -ENOTDIR;
+            }
             if flags & O_ACCMODE != O_RDONLY {
                 return -EACCES;
             }
@@ -806,7 +818,7 @@ impl Process {
             };
         }
         if norm == "/tmp" || norm == "/var/tmp" {
-            if flags & O_ACCMODE != O_RDONLY && flags & O_DIRECTORY == 0 {
+            if flags & O_ACCMODE != O_RDONLY {
                 return -EISDIR;
             }
             let cloexec = flags & O_CLOEXEC != 0;
@@ -826,6 +838,9 @@ impl Process {
         if let Some(&ino) = self.dentries.get(&norm) {
             if flags & O_CREAT != 0 && flags & O_EXCL != 0 {
                 return -EEXIST;
+            }
+            if wants_dir {
+                return -ENOTDIR;
             }
             if let Some(inode) = self.inodes.get_mut(&ino)
                 && let InodeKind::Regular(buf) = &mut inode.kind
