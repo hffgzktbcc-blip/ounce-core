@@ -299,6 +299,7 @@ pub fn run_with_stdin(
         return fail(why, EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0);
     }
     let (mut insns, mut syscalls) = (0u64, 0u64);
+    let mut threads = super::threads::Threads::new();
     loop {
         if insns >= opts.max_instructions {
             return fail(
@@ -316,7 +317,7 @@ pub fn run_with_stdin(
         if opts.deterministic {
             cpu.counter_ticks = cpu.counter_ticks.max(insns);
         }
-        let slice = (opts.max_instructions - insns).min(200_000) as usize;
+        let slice = threads.slice(opts.max_instructions - insns);
         let (n, exit) = engine.run_slice(&mut cpu, &mut mmu, slice);
         insns += n as u64;
         match exit {
@@ -339,7 +340,7 @@ pub fn run_with_stdin(
                     );
                 }
                 let nr = cpu.regs.read_x(8);
-                let args: [u64; 6] = std::array::from_fn(|i| cpu.regs.read_x(i as u8));
+                let mut args: [u64; 6] = std::array::from_fn(|i| cpu.regs.read_x(i as u8));
                 syscalls += 1;
                 proc.set_retired_instructions(insns);
                 if nr == 139 {
@@ -355,6 +356,40 @@ pub fn run_with_stdin(
                         );
                     }
                     continue;
+                }
+                // signals are the process's: a tkill/tgkill aimed at any live thread goes to the process
+                use super::threads::{SYS_TGKILL, SYS_TKILL, Step};
+                if nr == SYS_TKILL && threads.is_live(args[0]) {
+                    args[0] = super::syscalls::PID;
+                } else if nr == SYS_TGKILL && threads.is_live(args[1]) {
+                    args[1] = super::syscalls::PID;
+                }
+                match threads.syscall(nr, args, &mut cpu, &mut mmu) {
+                    Step::NotMine => {}
+                    step => {
+                        if opts.trace_syscalls {
+                            log(&format!("syscall {nr} {args:#x?} -> {step:?}"));
+                        }
+                        match step {
+                            Step::Return(v) => cpu.regs.write_x(0, v as u64),
+                            Step::ProcessExit(code) => {
+                                return Report {
+                                    stop: Stop::Exited(code),
+                                    instructions: insns,
+                                    syscalls,
+                                    engine: engine_name,
+                                    detail: StopDetail::at("clean_exit", &cpu, svc_pc),
+                                };
+                            }
+                            Step::Deadlock(why) => {
+                                // a deadlocked guest would run forever: report it as an exhausted budget
+                                let detail = StopDetail::at("budget_exhausted", &cpu, svc_pc);
+                                return fail(why, EXIT_BUDGET, detail, engine_name, insns, syscalls);
+                            }
+                            Step::Switched | Step::NotMine => {}
+                        }
+                        continue;
+                    }
                 }
                 let outcome = proc.dispatch(nr, args, &mut mmu, out);
                 if opts.trace_syscalls {
@@ -413,7 +448,8 @@ pub fn run_with_stdin(
                 }
                 return fail(diagnosis, EXIT_FAULT, detail, engine_name, insns, syscalls);
             }
-            _ => {}
+            // the slice ran out: the next runnable thread gets the CPU
+            _ => threads.preempt(&mut cpu),
         }
     }
 }
