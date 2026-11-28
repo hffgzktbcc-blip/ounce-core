@@ -101,8 +101,14 @@ The project owner tags releases. Until `v1.0.0`, versions are `0.MINOR.PATCH`:
   what the release downloads contain, and emulation changes that alter a guest program's results.
 - **Patch (`0.12.1`)**: fixes only, with no new flags, schema fields or contract keys. That covers correctness
   fixes, docs and CI.
-- Breaking changes are allowed before 1.0. Each one is listed under **Changed (breaking)** in
-  [CHANGELOG.md](CHANGELOG.md), with a one-line migration note.
+- Breaking changes are allowed before 1.0, in a minor release only; a patch release never contains one.
+- A change is **breaking** when a script, saved report or comparison that worked on the previous release can fail or read
+  differently without being edited: a removed or renamed flag, schema field, stop kind or exit code, a changed meaning or
+  default for one of them, or a changed default engine. Adding a field, flag or stop kind is not breaking.
+- Each breaking change is its own entry in [CHANGELOG.md](CHANGELOG.md) that starts with `Changed (breaking):` and ends
+  with a `Migration:` sentence saying what to change. A pull request that makes a breaking change is not merged without both.
+- The release pull request renames `## Unreleased` to `## X.Y.Z — YYYY-MM-DD (released)`, opens a new empty
+  `## Unreleased` above it, and sets `version` in `Cargo.toml` to `X.Y.Z`; the annotated tag is `vX.Y.Z` on that commit.
 
 Cadence: at most one minor release a week. A patch release ships only when a correctness or security fix can't
 wait. Two releases never ship within 24 hours unless the second fixes a correctness bug in the first.
