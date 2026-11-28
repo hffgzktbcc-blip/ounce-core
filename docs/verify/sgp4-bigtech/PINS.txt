@@ -1,0 +1,25 @@
+SGP4 bigtech rerun: pins (recorded 28 Nov 2026 by hffgzktbcc-blip)
+
+Upstream:        https://github.com/dnwrnr/sgp4 (Apache-2.0)
+Commit:          b915de601a4af0a9c1c61c54efaafb168ba3defb  (git describe: v3.0-1-gb915de6; the 7-char pin b915de6 on docs/verify/bigtech-2026-11-23.md)
+Input:           SGP4-VER.TLE from that commit, 110 lines / 33 TLE pairs,
+                 sha256 42566494ca3b11313570dbf2c493a2dd13a93f86aa8f03d57a54e46d9db72c01 (checked by the script).
+                 Not copied into this repo: it is upstream's file, fetched at the pinned commit.
+Driver:          docs/verify/bigtech/sgp4_drv.cpp (deterministic: m = 0..4320 step 120 per satellite; prints raw double bits)
+Build script:    docs/verify/bigtech/run_sgp4.sh (unchanged); run-elf gets --stdin=SGP4-VER.TLE
+Guest compiler:  Zig 0.17.1 (zig c++ = clang 22.1.8, musl libm), aarch64-macos tarball sha256
+                 75f1bc7a1e9852f17ec9a0c1895f767c4ec56d46bc8a834920eece1d0359dd8d (matches ziglang.org/download/index.json)
+                 Guest builds: -target aarch64-linux-musl -static -no-pie -std=c++17, -O2 and -O3 -mcpu=apple_m1
+Oracle compiler: Apple clang 21.0.0 (clang-2100.4.1.1), -O2 -std=c++17, macOS libm, run natively
+Host:            Apple M3, macOS 26.6.2 (25G83)
+ounce-core:      release build with --features native-jit at f44a7e8 (rustc 1.98.0)
+expected.txt:    1222 lines, sha256 001aa5a885b39ebd7ff9639177a43668eab639dd0721524f3e112b9251915c9a
+                 The native oracle output (sgp4.ref) from the run in run-2026-11-28.log; not edited.
+                 1,221 point lines + 1 summary line (points=1221 ok=1075); 146 lines are EXC lines from the library.
+
+What passes: the script requires the oracle to equal expected.txt, every run to exit 0, and the six
+guest outputs to be byte-identical. In this run they were identical, and 962/1,222 lines were identical to the
+macOS-libm oracle on every engine and build (the same count as the 23 Nov page). The 260 other lines are
+the known host-libm gap (macOS libm vs musl libm; see the bigtech page and the 25 Nov external audit). This
+record does not classify them further. A same-libm native oracle needs a native AArch64 Linux host, which
+this Mac is not.
