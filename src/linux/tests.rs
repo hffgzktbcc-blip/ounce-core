@@ -1868,12 +1868,31 @@ fn statfs_reports_scratch_limits_and_a_read_only_root() {
             .collect::<Vec<_>>()
     };
     let p = path(&mut mem, "/tmp");
+    // Pre-fill 128 bytes with 0xff to verify all 120 bytes (including f_spare[4]) are written and byte 120 is untouched.
+    mem.write_bytes(0x11000, &[0xff; 128]).unwrap();
     assert_eq!(call(SYS_STATFS, [p, 0x11000, 0, 0, 0, 0], &mut mem), 0);
-    // f_type f_bsize f_blocks f_bfree f_bavail f_files f_ffree f_fsid f_namelen f_frsize f_flags (ST_VALID|NOSUID|NODEV)
+    // f_type f_bsize f_blocks f_bfree f_bavail f_files f_ffree f_fsid f_namelen f_frsize f_flags f_spare[4]
     assert_eq!(
-        &words(&mem)[..11],
-        &[0x0102_1994, 4096, 16384, 16384, 16384, 64, 64, 0, 255, 4096, 0x26]
+        &words(&mem)[..],
+        &[
+            0x0102_1994,
+            4096,
+            16384,
+            16384,
+            16384,
+            64,
+            64,
+            0,
+            255,
+            4096,
+            0x26,
+            0,
+            0,
+            0,
+            0
+        ]
     );
+    assert_eq!(mem.read_u64(0x11078).unwrap(), u64::MAX);
     // a 5000-byte scratch file takes two blocks and one of the 64 files
     let p = path(&mut mem, "/tmp/f.bin");
     let fd = call(56, [AT_FDCWD, p, 0o102, 0o644, 0, 0], &mut mem) as u64;
@@ -1892,9 +1911,14 @@ fn statfs_reports_scratch_limits_and_a_read_only_root() {
     assert_eq!(words(&mem)[0], 0x9fa0);
     assert_eq!(call(SYS_FSTATFS, [1, 0x11000, 0, 0, 0, 0], &mut mem), 0);
     assert_eq!(words(&mem)[0], 0x1cd1);
-    // errors: a missing path, a closed descriptor, an unmapped buffer
+    // errors: empty path under --root, missing path, closed descriptor, unmapped pathname/buffer
+    let empty = path(&mut mem, "");
+    assert_eq!(call(SYS_STATFS, [empty, 0x11000, 0, 0, 0, 0], &mut mem), -ENOENT);
     let p = path(&mut mem, "/etc/missing");
     assert_eq!(call(SYS_STATFS, [p, 0x11000, 0, 0, 0, 0], &mut mem), -ENOENT);
+    assert_eq!(call(SYS_STATFS, [0x9000_0000, 0x11000, 0, 0, 0, 0], &mut mem), -EFAULT);
+    let p = path(&mut mem, "/tmp");
+    assert_eq!(call(SYS_STATFS, [p, 0x9000_0000, 0, 0, 0, 0], &mut mem), -EFAULT);
     assert_eq!(call(SYS_FSTATFS, [77, 0x11000, 0, 0, 0, 0], &mut mem), -EBADF);
     assert_eq!(call(SYS_FSTATFS, [fd, 0x9000_0000, 0, 0, 0, 0], &mut mem), -EFAULT);
     std::fs::remove_dir_all(&base).unwrap();

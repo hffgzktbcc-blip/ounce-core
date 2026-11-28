@@ -1424,6 +1424,9 @@ impl Process {
 
     /// The file system that guest path `path` is on, or `None` if nothing is there.
     fn path_fs(&self, path: &str) -> Option<GuestFs> {
+        if path.is_empty() {
+            return None;
+        }
         let norm = normalize_path(path);
         if norm == "/proc/self/auxv" {
             Some(GuestFs::Proc)
@@ -1501,8 +1504,8 @@ impl Process {
             0,
             0,
         ];
-        let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
-        if mmu.write_bytes(buf, &bytes).is_err() {
+        let bytes = words.map(u64::to_le_bytes);
+        if mmu.write_bytes(buf, bytes.as_flattened()).is_err() {
             -EFAULT
         } else {
             0
