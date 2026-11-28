@@ -38,7 +38,7 @@ Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general L
   Each stops with a diagnosis naming the syscall. See [LIMITS.md](../../LIMITS.md#known-gaps-in-what-the-linux-elf-runner-and-cpu-models-execute-24-nov-2026).
 - Dynamic executables, `ET_DYN`/static-PIE, 32-bit and big-endian ELF are rejected. `PT_TLS` is not
   set up (libc startup is expected to do it).
-- No host files (only the in-memory scratch area above; limits in LIMITS.md), no sockets, threads, `clone`, `execve`, asynchronous signals, or `fork`. Synchronous memory faults can deliver a guest
+- No host files unless `--root=DIR` is given (then a read-only view of `DIR`; see LIMITS.md); otherwise only the in-memory scratch area above. No sockets, threads, `clone`, `execve`, asynchronous signals, or `fork`. Synchronous memory faults can deliver a guest
   SIGSEGV handler (including an alternate stack and `rt_sigreturn`).
 - Segment pages are RW or RWX only: read-only data is not write-protected, and no W^X.
 - Accessible memory is allocated eagerly: `brk` growth is capped at 512 MiB, one accessible

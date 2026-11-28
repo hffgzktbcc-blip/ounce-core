@@ -23,6 +23,8 @@ pub struct Options {
     pub max_instructions: u64,
     pub trace_syscalls: bool,
     pub deterministic: bool,
+    /// `--root=DIR`: a host directory the guest sees read-only as its file system outside the scratch area
+    pub root: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
@@ -32,6 +34,7 @@ impl Default for Options {
             max_instructions: 2_000_000_000,
             trace_syscalls: false,
             deterministic: false,
+            root: None,
         }
     }
 }
@@ -263,6 +266,12 @@ pub fn run_with_stdin(
     };
     proc.set_auxv(auxv_bytes);
     proc.set_stdin(stdin.to_vec());
+    if let Some(dir) = &opts.root
+        && let Err(e) = proc.set_host_root(dir)
+    {
+        let why = format!("--root={}: {e}", dir.display());
+        return fail(why, EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0);
+    }
     let (mut insns, mut syscalls) = (0u64, 0u64);
     loop {
         if insns >= opts.max_instructions {
@@ -446,7 +455,7 @@ impl Output for HostOutput {
     }
 }
 
-const RUN_ELF_USAGE: &str = "usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [-- args...]";
+const RUN_ELF_USAGE: &str = "usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [--root=<dir>] [-- args...]";
 
 /// CLI entry: `args` are everything after `run-elf`. Returns the process exit status.
 pub fn cli(args: &[String]) -> i32 {
@@ -483,6 +492,8 @@ pub fn cli(args: &[String]) -> i32 {
         } else if a == "--help" || a == "-h" {
             println!("{RUN_ELF_USAGE}");
             return 0;
+        } else if let Some(dir) = a.strip_prefix("--root=") {
+            opts.root = Some(std::path::PathBuf::from(dir));
         } else if a == "--deterministic" {
             opts.deterministic = true;
         } else if a == "--trace-syscalls" {

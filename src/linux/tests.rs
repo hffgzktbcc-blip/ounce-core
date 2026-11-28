@@ -5,6 +5,7 @@ use crate::cpu::CpuTier;
 const HELLO: &[u8] = include_bytes!("../../tests/linux-elf/bin/hello.elf");
 const EXITCODE: &[u8] = include_bytes!("../../tests/linux-elf/bin/exitcode.elf");
 const ARGS: &[u8] = include_bytes!("../../tests/linux-elf/bin/args.elf");
+const READFILE: &[u8] = include_bytes!("../../tests/linux-elf/bin/readfile.elf");
 const MEMORY: &[u8] = include_bytes!("../../tests/linux-elf/bin/memory.elf");
 const BADSYS: &[u8] = include_bytes!("../../tests/linux-elf/bin/badsyscall.elf");
 const BASIC_MATH: &[u8] = include_bytes!("../../tests/linux-elf/bin/basic_math.elf");
@@ -1582,4 +1583,164 @@ fn getrandom_is_deterministic_validated_and_capped() {
         p.dispatch(278, [0x1000, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
         Outcome::Return(256)
     );
+}
+
+/// `--root=DIR`: guest paths outside the scratch area name files under DIR, read-only, and nothing outside DIR
+/// (lexical `..` stops at the root; a symlink that leads out is refused).
+#[test]
+#[allow(non_snake_case)]
+fn host_root_exposes_a_read_only_folder_and_nothing_outside_it() {
+    use super::syscalls::{Outcome, Process};
+    use crate::mmu::{Memory, Permission};
+    const AT_FDCWD: u64 = -100i64 as u64;
+    let (OPENAT, READ, LSEEK, PREAD64, NEWFSTATAT, GETDENTS64) = (56u64, 63u64, 62u64, 67u64, 79u64, 61u64);
+    let (O_WRONLY, O_CREAT, O_DIRECTORY) = (1u64, 0o100u64, 0o200000u64);
+    let (ENOENT, EROFS) = (2i64, 30i64);
+    let base = std::env::temp_dir().join(format!("ounce_root_test_{}", std::process::id()));
+    let (root, outside) = (base.join("root"), base.join("outside"));
+    std::fs::create_dir_all(root.join("etc")).unwrap();
+    std::fs::create_dir_all(root.join("data")).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(root.join("etc/motd"), b"hello from the host\n").unwrap();
+    std::fs::write(root.join("data/n.bin"), [1u8, 2, 3, 4, 5]).unwrap();
+    std::fs::write(outside.join("secret"), b"must not be readable").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(outside.join("secret"), root.join("escape")).unwrap();
+
+    let mut mem = Memory::new();
+    mem.map_range(0x10000, 0x10000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    let path = |mem: &mut Memory, p: &str| {
+        mem.write_bytes(0x10000, p.as_bytes()).unwrap();
+        mem.write_bytes(0x10000 + p.len() as u64, &[0]).unwrap();
+        0x10000u64
+    };
+    let mut proc = Process::new(0x1000);
+    let p = path(&mut mem, "/etc/motd");
+    assert_eq!(
+        proc.dispatch(OPENAT, [AT_FDCWD, p, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOENT),
+        "no root: host files stay hidden"
+    );
+
+    proc.set_host_root(&root).unwrap();
+    let open = |proc: &mut Process, mem: &mut Memory, out: &mut Capture, p: &str, flags: u64| {
+        mem.write_bytes(0x10000, p.as_bytes()).unwrap();
+        mem.write_bytes(0x10000 + p.len() as u64, &[0]).unwrap();
+        match proc.dispatch(OPENAT, [AT_FDCWD, 0x10000, flags, 0o644, 0, 0], mem, out) {
+            Outcome::Return(v) => v,
+            other => panic!("{p}: {other:?}"),
+        }
+    };
+    let fd = open(&mut proc, &mut mem, &mut out, "/etc/motd", 0) as u64;
+    assert!(fd >= 3);
+    assert_eq!(
+        proc.dispatch(READ, [fd, 0x11000, 64, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(20)
+    );
+    let mut got = [0u8; 20];
+    mem.read_bytes(0x11000, &mut got).unwrap();
+    assert_eq!(&got, b"hello from the host\n");
+    assert_eq!(
+        proc.dispatch(LSEEK, [fd, 0, 2, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(20),
+        "SEEK_END"
+    );
+    assert_eq!(
+        proc.dispatch(PREAD64, [fd, 0x11000, 4, 6, 0, 0], &mut mem, &mut out),
+        Outcome::Return(4)
+    );
+    mem.read_bytes(0x11000, &mut got[..4]).unwrap();
+    assert_eq!(&got[..4], b"from");
+    // relative to the root (the guest's working directory is /), and `..` cannot climb above it
+    for p in ["etc/motd", "/etc/../etc/motd", "/../../../etc/motd"] {
+        assert!(open(&mut proc, &mut mem, &mut out, p, 0) >= 3, "{p}");
+    }
+    // read-only, nothing created, nothing outside, nothing missing
+    assert_eq!(open(&mut proc, &mut mem, &mut out, "/etc/motd", O_WRONLY), -EROFS);
+    assert_eq!(
+        open(&mut proc, &mut mem, &mut out, "/etc/new", O_WRONLY | O_CREAT),
+        -EROFS
+    );
+    assert_eq!(open(&mut proc, &mut mem, &mut out, "/nope", 0), -ENOENT);
+    #[cfg(unix)]
+    assert_eq!(
+        open(&mut proc, &mut mem, &mut out, "/escape", 0),
+        -ENOENT,
+        "a symlink out of the root is refused"
+    );
+    // stat by path: a 5-byte regular file and a directory
+    let p = path(&mut mem, "/data/n.bin");
+    assert_eq!(
+        proc.dispatch(NEWFSTATAT, [AT_FDCWD, p, 0x12000, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        (
+            mem.read_u32(0x12010).unwrap() & 0o170000,
+            mem.read_u64(0x12030).unwrap()
+        ),
+        (0o100000, 5)
+    );
+    let p = path(&mut mem, "/data");
+    assert_eq!(
+        proc.dispatch(NEWFSTATAT, [AT_FDCWD, p, 0x12000, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(mem.read_u32(0x12010).unwrap() & 0o170000, 0o040000);
+    // getdents64 lists the directory: linux_dirent64 records (d_ino, d_off, d_reclen, d_type, name)
+    let dfd = open(&mut proc, &mut mem, &mut out, "/data", O_DIRECTORY) as u64;
+    let Outcome::Return(n) = proc.dispatch(GETDENTS64, [dfd, 0x13000, 4096, 0, 0, 0], &mut mem, &mut out) else {
+        panic!()
+    };
+    let mut names = Vec::new();
+    let mut off = 0u64;
+    while off < n as u64 {
+        let reclen = mem.read_u16(0x13000 + off + 16).unwrap() as u64;
+        let mut name = Vec::new();
+        let mut i = 19;
+        while let Ok(c) = mem.read_u8(0x13000 + off + i) {
+            if c == 0 {
+                break;
+            }
+            name.push(c);
+            i += 1;
+        }
+        names.push(String::from_utf8(name).unwrap());
+        off += reclen;
+    }
+    names.sort();
+    assert_eq!(names, [".", "..", "n.bin"]);
+    assert_eq!(
+        proc.dispatch(GETDENTS64, [dfd, 0x13000, 4096, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0),
+        "then end of directory"
+    );
+    // the scratch area is unchanged: /tmp stays writable
+    assert!(open(&mut proc, &mut mem, &mut out, "/tmp/x", O_WRONLY | O_CREAT) >= 3);
+    std::fs::remove_dir_all(&base).unwrap();
+}
+
+/// `Options::root` reaches the guest: a program reads a host file by its guest path, on every engine.
+#[test]
+fn run_elf_root_option_lets_a_guest_read_host_files() {
+    let dir = std::env::temp_dir().join(format!("ounce_readfile_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("conf")).unwrap();
+    std::fs::write(dir.join("conf/app.cfg"), "answer = 42\n").unwrap();
+    for tier in TIERS {
+        let mut cap = Capture::default();
+        let opts = Options {
+            tier,
+            root: Some(dir.clone()),
+            ..Options::default()
+        };
+        let argv = ["readfile".to_string(), "/conf/app.cfg".to_string()];
+        let r = run(READFILE, &argv, &opts, &mut cap, &mut |_| {});
+        assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
+        assert_eq!(String::from_utf8_lossy(&cap.out), "answer = 42\n");
+    }
+    // without a root the same path does not exist
+    let (r, out) = go(READFILE, &["readfile", "/conf/app.cfg"], CpuTier::Tier3);
+    assert_eq!((r.stop, out.as_str()), (Stop::Exited(1), "open failed: -2\n"));
+    std::fs::remove_dir_all(&dir).unwrap();
 }
