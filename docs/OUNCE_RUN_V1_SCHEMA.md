@@ -32,7 +32,7 @@ Every field is a flat scalar or `null`, preserving compatibility with the publis
 | `sm_service` | `string \| null` | Last requested `sm` service name (or unimplemented HIPC interface name) when stopping on `unhandled_svc` (exit 14); `null` when no service was requested or for other stops (`run-elf` always writes `null`). Additive field (#475) |
 | `cmif_cmd_id` | `u32 \| null` | Last dispatched CMIF command ID (or unimplemented HIPC command ID) when stopping on `unhandled_svc` (exit 14); `null` when no CMIF request ran or for other stops (`run-elf` always writes `null`). Additive field (#475) |
 | `break_result` | `u32 \| null` | Horizon `Result` code read from `info1` on `svc_break` |
-| `insns_executed` | `u64` | Total guest instructions executed. An instruction that faults did not complete and is not counted, but the ones before it in the same run are: a fault at the fourth instruction reports 3 (before this was fixed, `run` / `run-nro` reported only the instructions of earlier slices, often 0). With `--deterministic` it is the same on every run, host and CPU tier |
+| `insns_executed` | `u64` | Total guest instructions executed. An instruction that faults did not complete and is not counted, but the ones before it in the same run are: a fault at the fourth instruction reports 3 (before this was fixed, `run` / `run-nro` reported only the instructions of earlier slices, often 0). With `--deterministic` it is the same on every run, host and CPU tier for a single-threaded program; a `run-elf` program with several guest threads switches threads at different instructions on different engines, so its counts differ between engines |
 | `frames_presented` | `u64` | Frames the run loop presented (`0` when the run had no display or the guest never presented). `run` / `run-nro` have a display only with a window (`--gui`) or `--present=headless`; use the latter for comparisons. Additive field |
 | `framebuffer_hash` | `string \| null` | `fnv1a64:<16 lowercase hex>`: FNV-1a 64 over the RGBA bytes of the last presented guest frame, **before** the telemetry HUD, alpha forced to `0xFF`. Width and height are not mixed in. `null` if no frame was presented, or if the host GPU drew the last frame's 3D draws. That happens only in a `--features gpu-present` build with a GPU window open, outside deterministic mode; guest memory never holds those frames. `--present=headless` and `--deterministic` / `OUNCE_DETERMINISTIC=1` draw 3D with the software rasterizer, so every frame they present has a hash, and the two give the same hash. Additive field |
 | `audio_frames_mixed` | `integer` | Stereo frames (one left and one right 16-bit sample) of audio the guest mixed through `audout` or `audren`. Counted as the audio is mixed, so `--present=headless`, which opens no sound device, reports the same number as a run that plays it. `0` when the guest mixed none; `run-elf` always writes `0`. Additive field (#478) |
@@ -48,15 +48,15 @@ Every field is a flat scalar or `null`, preserving compatibility with the publis
 | :--- | :--- | :--- |
 | `clean_exit` | `0` | Guest exited via `svcExitProcess` |
 | `window_closed` | `0` | Host GUI window closed cleanly |
-| `frame_limit` | `0` | Requested `--frames` / benchmark limit reached |
+| `frame_limit` | `0` | Requested `--max-frames N` presented-frame limit reached |
 | `unimplemented_insn` | `10` | Undecoded / unimplemented AArch64 opcode |
 | `memory_fault` | `11` | Unmapped read/write, permission violation, or alignment fault |
-| `cpu_error` | `12` | Breakpoint (`BRK`), BTI fault, or JIT CPU fault |
+| `cpu_error` | `12` | Breakpoint (`BRK`), BTI fault, JIT CPU fault, or (`run-elf`) a guest that dies of an unhandled `SIGILL` (process status 132) |
 | `svc_break` | `13` | Guest called `svcBreak` |
 | `unhandled_svc` | `14` | Unhandled Horizon SVC |
-| `cpu_halted` | `15` | CPU halted |
+| `cpu_halted` | `15` | Reserved, not currently emitted: no engine produces it today |
 | `budget_exhausted` | `16` | Instruction budget exhausted |
-| `loader_error` | `17` | Failed to load `.nro` / container |
+| `loader_error` | `17` | `run-elf` could not load the ELF. `run` / `run-nro` write no report when loading fails |
 
 ---
 
@@ -65,4 +65,4 @@ Every field is a flat scalar or `null`, preserving compatibility with the publis
 When orchestrating cross-engine parity or escalation, callers pass:
 - `--present=headless` (no window and no host audio device)
 - `--audio=null` or `OUNCE_AUDIO=null` (no host audio device, including when a window is open)
-- `--deterministic` or `OUNCE_DETERMINISTIC=1` / `true`. On `run`, `run-nro` and `run-elf` the guest runs on a fixed clock: guest time advances per system call (20 µs) and per scheduler time slice of 20,000 instructions (1 ms), not with the host clock, and the wall-clock date is fixed, so `insns_executed` is the same on every run and host (#479). On homebrew `run` / `run-nro` it also makes 3D draws use the software rasterizer, even with a GPU window, so `framebuffer_hash` is never `null` for a presented frame.
+- `--deterministic` or `OUNCE_DETERMINISTIC=1` / `true`. On `run`, `run-nro` and `run-elf` the guest runs on a fixed clock, not the host clock, with a fixed wall-clock date, so `insns_executed` is the same on every run and host for a single-threaded program (#479). On `run` / `run-nro`, guest time advances 20 µs per SVC and 1 ms per scheduler slice of 20,000 instructions. On `run-elf`, each successful clock read advances guest time by 1 ms and `nanosleep` jumps it; the CPU-time clocks count one nanosecond per retired instruction (see [LIMITS](LIMITS.md)). On homebrew `run` / `run-nro` it also makes 3D draws use the software rasterizer, even with a GPU window, so `framebuffer_hash` is never `null` for a presented frame.

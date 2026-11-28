@@ -33,7 +33,7 @@ Once a contract item is frozen:
 
 | Issue says | What the code does | Consequence |
 |---|---|---|
-| Exit codes `0`, `2-5`, `10-17` | ounce-core's own process statuses are `0`, `1`, `2` (plus `70`-`73` on `run-elf`, and the guest's status). It never exits `3`, `4`, `5` or `10`-`17`. `10`-`17` are the value of the `exit_code` **field** in the report. The historical family roadmap assigned `2..5` infrastructure exits to archived `ounce-hb`. | `2-5` are not implemented in this repo and the repository once assigned them is archived, so they are not verifiable or testable here. See [Exit codes](#exit-codes). |
+| Exit codes `0`, `2-5`, `10-17` | ounce-core's own process statuses are `0`, `1`, `2` (plus `70`-`73`, `132` and `135` on `run-elf`, and the guest's status). It never exits `3`, `4`, `5` or `10`-`17`. `10`-`17` are the value of the `exit_code` **field** in the report. The historical family roadmap assigned `2..5` infrastructure exits to archived `ounce-hb`. | `2-5` are not implemented in this repo and the repository once assigned them is archived, so they are not verifiable or testable here. See [Exit codes](#exit-codes). |
 | Flag `--timeout` | Not an option of `run` / `run-nro` / `run-elf` (`run` refuses it with status 2). Only `ounce-core ui --timeout SECS` exists. The historical roadmap put it on archived `ounce-hb run`. | Pinned as "not a run flag here". |
 | Flag `--json` | Not an option of `run` / `run-nro` / `run-elf` (refused with status 2). `--json <path>` exists on `diverge` and `trace-diff`; `census --json` is a boolean switch. The run report flag is `--report-json=<path>` (or `OUNCE_REPORT_JSON`). | Owner decides whether `--report-json` joins the frozen flags. |
 | `ounce.repro.v1` | Ounce-Core now keeps ten metadata-only manifests under `tests/repro/` and checks them in `tests/repro_corpus.rs`; the historical plan assigned the full repro-bundle/consumer contract to now-archived `ounce-hb`. | The local corpus tests do not freeze the historical cross-project schema. |
@@ -54,15 +54,15 @@ the listed types, and each listed type occurs in at least one of 18 representati
 | `frames_presented` | number | v0.10.0 (#460) |
 | `framebuffer_hash` | string `fnv1a64:<16 hex>` or null | v0.10.0 (#460, #486) |
 | `lr`, `sp` | number or null (set exactly when `pc` is) | v0.10.0 (#475, #513) |
-| `fault_symbol` | string or null (resolved ELF `.symtab` symbol at `pc` on faults) | **unreleased** (#475) |
-| `backtrace` | string or null (bounded `X29`/`LR` frame chain on faults/`svc_break`) | **unreleased** (#475) |
+| `fault_symbol` | string or null (resolved ELF `.symtab` symbol at `pc` on faults) | v0.11.0 (#475) |
+| `backtrace` | string or null (bounded `X29`/`LR` frame chain on faults/`svc_break`) | v0.11.0 (#475) |
 | `sm_service` | string or null (`unhandled_svc` / exit 14 after `sm:` / HIPC activity) | v0.10.0 (#475, #513) |
 | `cmif_cmd_id` | number or null (`unhandled_svc` / exit 14 after CMIF dispatch) | v0.10.0 (#475, #513) |
 | `audio_frames_mixed` | number | v0.10.0 (#478) |
 | `audio_hash` | string `fnv1a64:<16 hex>` or null | v0.10.0 (#478) |
 | `guest_exit_status` | number or null (`run-elf` clean exit only) | v0.10.0 (#473) |
 
-v0.9.0 (`d3380a0`) had 14 keys; nine additional fields shipped in v0.10.0 (`ae13734`) and two (`fault_symbol`, `backtrace`) were added afterwards on `main`. Shipping those fields does **not** freeze this proposed v1.0 contract. Changes to published fields should be deliberate, documented and tested; see the owner decisions below. `tier` is `interpreter`, `tier3`, `tier4` or `nce`
+v0.9.0 (`d3380a0`) had 14 keys; nine additional fields shipped in v0.10.0 (`ae13734`) and two (`fault_symbol`, `backtrace`) shipped in v0.11.0, for 25 keys in v0.11.0 and v0.12.0. Shipping those fields does **not** freeze this proposed v1.0 contract. Changes to published fields should be deliberate, documented and tested; see the owner decisions below. `tier` is `interpreter`, `tier3`, `tier4` or `nce`
 (`CpuTier::report_label`); only `interpreter` and `tier3` are exercised by the tests, because `tier4` and `nce` need
 cargo features. Details pinned beyond the key set (`run_v1_stop_details_follow_the_stop`): a fault's `fault_addr`
 or `opcode`, `break_result` read from `info1` when `info2` is 4 (else null), `guest_exit_status` 42 with `exit_code` 0
@@ -88,7 +88,7 @@ provokes each reachable `stop_kind` with a real program and checks the pair agai
 | 12 | `cpu_error` | `brk #0`; `udf #0` in an ELF (the guest dies of SIGILL, process status 132) |
 | 13 | `svc_break` | `svc #0x26` |
 | 14 | `unhandled_svc` | `svc #0xff` (NRO); `badsyscall.elf` (Linux syscall 278) |
-| 15 | `cpu_halted` | **not reachable**: nothing in the tree constructs `StepResult::Halt`, so the code is dead today |
+| 15 | `cpu_halted` | **reserved, not currently emitted**: nothing in the tree constructs `StepResult::Halt` (`src/cpu/interpreter.rs:64` defines it) |
 | 16 | `budget_exhausted` | `b .` with `OUNCE_NRO_BUDGET=5000` (NRO); `--max-insns=1000` (ELF) |
 | 17 | `loader_error` | `run-elf` on a file that is not an ELF (no report from `run-nro`, see above) |
 
@@ -104,7 +104,8 @@ Pinned by `run_and_run_nro_process_exit_statuses`, the `*_usage_*` tests and `tr
 | | 1 | any other stop, a loader failure, a missing input file |
 | | 2 | usage error: unknown option, bad `--max-frames`, no path, unknown command, guest args for a non-NRO |
 | `run-elf` | guest status & 0xff | the program's own `exit`/`exit_group` status (42 for `exitcode.elf`) |
-| | 70 / 71 / 72 / 73 | unimplemented syscall / instruction or memory fault / cannot load ELF / instruction budget |
+| | 70 / 71 / 72 / 73 | unimplemented syscall / instruction or memory fault / cannot load ELF / instruction budget (73 also reports a futex deadlock, `budget_exhausted`) |
+| | 132 / 135 | the guest died of an unhandled `SIGILL` (`stop_kind` `cpu_error`) / `SIGBUS` (`stop_kind` `memory_fault`); pinned by `src/linux/tests.rs`, not by `contract_v1` |
 | | 2 | usage error |
 | `trace-diff` | 0 / 1 / 2 | no divergence / divergence / bad input |
 | `diverge` | 0 / 1 / 2 | no disagreement / disagreement / could not run (only the status-2 paths are tested: the rest need a C compiler and the host CPU) |
@@ -144,7 +145,7 @@ the flags the issue names and are not frozen by this draft.
 
 ## What the tests do and do not show
 
-- 16 integration tests in `tests/contract_v1.rs`, about two seconds, no new dependencies, no host window, no sound
+- 25 integration tests in `tests/contract_v1.rs` (default features), about two seconds, no new dependencies, no host window, no sound
   device, no C compiler. Programs are 2-6 instruction NROs/ELFs assembled in the test plus the in-repo fixtures
   `audren.nro`, `sdmc.nro`, `exitcode.elf`, `badsyscall.elf`. Hand-assembled encodings: `mov w0,#0` `0x52800000`,
   `svc #7` `0xD40000E1`, `svc #0x26` `0xD40004C1`, `svc #0xff` `0xD4001FE1`, `svc #0x18` `0xD4000301`, `brk #0`
@@ -170,7 +171,7 @@ the flags the issue names and are not frozen by this draft.
    "at the stop"; `guest_exit_status` is `run-elf` only.
 4. **`run` / `run-nro` load failures write no report.** Add a `loader_error` report (additive, status stays 1) before
    freezing, or freeze today's behaviour?
-5. **`cpu_halted` / `15` is dead code.** Freeze a value nothing can produce, or drop it from the table?
+5. **`cpu_halted` / `15` is reserved and not currently emitted.** Freeze a value nothing can produce, or drop it from the table?
 6. **`ounce.repro.v1`.** No definition exists in this repository. With its former owner `ounce-hb` archived, should a
    copy of its contract doc and key baseline be added here, or is it frozen only there?
 7. **`ounce.trace.v1`** has one active implementation and no active consumer. Freeze before an active second
