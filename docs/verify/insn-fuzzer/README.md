@@ -22,6 +22,13 @@ register inputs, then compares every X register, V register, NZCV and FPSR. Host
 ## Skipped or excluded
 - UNDEFINED encodings (host SIGILL) are not compared. They are replayed only to count words the interpreter runs but the
   host rejects ("emulator runs a word the host calls UNDEFINED").
+- Hosts without FEAT_BF16 or FEAT_I8MM (for example an M1 runner): `fuzz_host` prints `F missing=bf16`, `F missing=i8mm` or
+  `F missing=bf16,i8mm` as the first line of the trace. `fuzz-replay` then counts a `U` word that the interpreter runs as
+  "host lacks optional feature (skipped)" instead of "emulator runs a word the host calls UNDEFINED", but only when the word is a
+  BF16 (`BFCVT`, `BFCVTN`, `BFMLAL`, `BFDOT`, `BFMMLA`) or I8MM (`SMMLA`/`UMMLA`/`USMMLA`, mixed-sign dot by element) form whose
+  feature the header lists. Any other word the host rejects still fails the run. A missing, empty or unknown feature list
+  (anything but `bf16` and `i8mm`) is a parse error (exit 2). Evidence: `docs/verify/insn-fuzzer/fuzz_host.c:9,460-470`,
+  `src/fuzz_replay.rs:5,70-91,673-686,864-880,1002-1004`.
 - x18 is not compared: macOS reserves it and may clear it, so the input is fixed at 0 and the output ignored.
   (This showed up as a false mismatch in the first 1M-word run: 5 mismatches, all x18.)
 - Architecturally UNPREDICTABLE / implementation-defined results: none were excluded individually. The covered space
@@ -77,13 +84,13 @@ words in a class.
    SQDMLSL by element, scalar SQDMULH/SQRDMULH/SQDMULL/SQDMLAL/SQDMLSL by element, SDOT/UDOT (by element and vector), vector
    FMULX (three-same and by element). Seeds 1 to 16: 266,727 executed vector words, 0 mismatches; scalar by element: 214,000
    words (seeds 17-24 and 301-380), 0 mismatches. Test `fuzz_insn_tests::by_element_dot_and_fmulx_classes`.
-   Scalar FP by-element (FMUL/FMLA/FMLS/FMULX Sd/Dd) and scalar FMULX are not implemented.
+   Scalar FP by-element (FMUL/FMLA/FMLS/FMULX Sd/Dd) and scalar FMULX were not implemented when this run was recorded; scalar half-precision and by-element forms have been added since (see the [CHANGELOG](../../../CHANGELOG.md)).
 4. **FP round, convert and estimate two-register ops** (vector, f32 and f64 lanes): FRINTN/P/M/Z/A/X/I, FRINT32Z/32X/64Z/64X,
    FCVTNS/NU/MS/MU/AS/AU/PS/PU, FRECPE, FRSQRTE, URECPE, URSQRTE. Seeds 1 to 16: about 314,000 executed words of the group,
    0 mismatches (the estimates, FRECPE/FRSQRTE/URECPE/URSQRTE, are about 19,000 of those words in 8M generated, so they are the
    most lightly tested part). The default-FPCR path was fuzzed; under non-default FPCR the ops flush denormal inputs under FZ and
    FRINTX/FRINTI/FRINT32X/FRINT64X honour RMode, but those paths and DN were not fuzzed. Scalar forms (FCVTNS Sd, FRECPE Sd, ...)
-   and half precision are not implemented. Test `fuzz_insn_tests::fp_round_convert_estimate_classes`.
+   and half precision were not implemented when this run was recorded; scalar half precision and the FEAT_FP16 SIMD forms have been added since (see the [CHANGELOG](../../../CHANGELOG.md)). Test `fuzz_insn_tests::fp_round_convert_estimate_classes`.
    Decoder gap found on the way: FRINTA (opcode 11000, U=1) was missing.
 5. **FRECPS and FRSQRTS** (vector, f32 and f64). The first operand is negated before NaN processing (so its NaN returns with
    the sign flipped), and FRSQRTS halves before rounding so `(3 - a*b) / 2` does not overflow early; the fuzzer found both.
@@ -112,7 +119,7 @@ FZ, DN, FZ16 and RMode, and flags of instructions the interpreter reports as uni
 ## Targeted classes (`--word-mask` / `--word-value`)
 `fuzz_host --word-mask M --word-value V` forces the bits in M to V in every generated word, so a rare encoding class can be
 fuzzed in volume (the random families reach FCADD about 0 times per million words). With `--fpcr-mix`, 8 seeds x 400,000 words
-per class, host vs interpreter, all 8 FPCR values:
+per class, host vs interpreter, all FPCR values of the mix (`fuzz_host.c` uses 10 today; an earlier version of this line said 8):
 
 | class (mask:value) | executed | value mismatches | flag-only differences |
 |---|---|---|---|
@@ -127,7 +134,7 @@ per class, host vs interpreter, all 8 FPCR values:
 
 ## Not covered (explicit)
 - Loads/stores, branches, system, integer scalar data-processing, SVE/SME, crypto, atomics.
-- Features the interpreter lacks: BF16/I8MM and every encoding class it reports as unimplemented (top classes by count:
+- Encoding classes the interpreter reports as unimplemented (BF16 and I8MM are implemented, so they are no longer on this list; top classes by count:
   0x4f00fc00, 0x0f00fc00, 0x6e20f800 in the recorded run; see the current summary the tool prints). FEAT_FP16, FCMA and
   RDM support is partial; unsupported forms remain coverage gaps.
   That is about 11% of the words the host executes in this space (was 40%). The largest remaining groups are scalar FP16

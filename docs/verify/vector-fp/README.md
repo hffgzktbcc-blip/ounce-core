@@ -15,9 +15,9 @@ Single (2S, 4S) and double (2D) lanes:
 Implementation: `SimdFpThreeSame` / `SimdFpTwoMisc` in `src/cpu/instructions.rs`, decoder sections 27d and 29b, `simd::fp_three_same` / `simd::fp_two_misc`. Tier-4 translates none of these, so it falls back to the shared Tier-3 interpreter path for them (as for the other FP/SIMD forms it does not lower).
 
 ## Not covered
-- Half precision (4H/8H, the FP16 three-same and two-misc encodings, `FCVTN/FCVTL` to/from half). Still undecoded.
+- Half precision (4H/8H, the FP16 three-same and two-misc encodings, `FCVTN/FCVTL` to/from half) was undecoded when this check was made (8 Nov 2026). *(Update 28 Nov 2026: every scalar and vector FEAT_FP16 form now decodes and `AT_HWCAP` advertises `fphp`/`asimdhp`; see [LIMITS](../../LIMITS.md) and [`../insn-fuzzer/`](../insn-fuzzer/README.md). This harness has not been re-run for half precision.)*
 - By-element FP forms were already present and are not part of this test; `FMULX`, `FMAXP/FMINP/FMAXNMP/FMINNMP`, `FRECPE/FRSQRTE/FRECPS/FRSQRTS`, `FRINT*`, other `FCVT*` rounding modes, `FCVTXN`, scalar FP compares in the SIMD scalar encoding.
-- FPCR modes (`DN`, `FZ`, rounding) and FPSR cumulative exception flags are not modelled; results are the host's default-mode IEEE results.
+- FPCR modes (`DN`, `FZ`, rounding) and FPSR cumulative exception flags were not modelled when this check was made (8 Nov 2026); results were the host's default-mode IEEE results. *(Update 28 Nov 2026: they are modelled now; see [LIMITS](../../LIMITS.md#maturity-labels-and-where-each-claim-sits) and [`../fp-edge/`](../fp-edge/README.md). The result table below was recorded before that.)*
 - `FDIV`, `FADD`, `FSUB`, `FMUL`, `FSQRT` NaN handling is inherited from the host FPU (Rust `f32/f64` operators), correct on Apple Silicon and aarch64 hosts but not independently checked on x86 hosts.
 
 ## Result (2026-11-08, macOS arm64)

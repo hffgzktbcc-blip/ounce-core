@@ -11,7 +11,7 @@
 
 ## What is not modelled
 - Trap enables are stored but never trap. *(Update 25 Nov 2026: the original 8 Nov text said FPCR rounding, flush-to-zero and default-NaN were not honoured and that no cumulative exception flags were set; both are now modelled. FPCR rounding mode, `FZ`, `DN` and `FZ16` are honoured by the FP forms listed in [LIMITS](../../LIMITS.md), and the interpreter and Tier-3 accumulate IOC, DZC, OFC, UFC, IXC and IDC into `FPSR`; see unit test `fpsr_exception_flags_accumulate_and_clear`. The result table below was recorded before that and covers QC only. FPCR is still stored verbatim, RES0 bits included.)*
-- Other saturating instructions set QC too: the narrows and shifts (see `saturating-shifts/`) and `SQADD`/`UQADD`/`SQSUB`/`UQSUB` (see `saturating-add-sub/`). Still undecoded, so no QC: `SQDMULH`/`SQRDMULH`, scalar `SQDMULL`, `SQABS`/`SQNEG`, register-shift `SQSHL`/`UQSHL`.
+- Other saturating instructions set QC too: the narrows and shifts (see `saturating-shifts/`) and `SQADD`/`UQADD`/`SQSUB`/`UQSUB` (see `saturating-add-sub/`). Undecoded when this README was written, so no QC: `SQDMULH`/`SQRDMULH`, scalar `SQDMULL`, `SQABS`/`SQNEG`, register-shift `SQSHL`/`UQSHL`. *(Update 28 Nov 2026: `SQDMULH`/`SQRDMULH` and `SQABS`/`SQNEG` (vector and scalar) are decoded with QC compared against hardware in [`../insn-fuzzer/`](../insn-fuzzer/README.md); scalar `SQDMULL` was added in #590. Register-shift `SQSHL`/`UQSHL` have not been re-checked here.)*
 - Native (`--cpu=native`) runs on real hardware; FPSR is not saved/restored across SVC entry/exit in the context struct (guest and host share the hardware register in between).
 
 ## Result (2026-11-08, macOS arm64)
